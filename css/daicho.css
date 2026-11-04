@@ -126,7 +126,7 @@ tr.sum td{font-weight:700;border-top:2px solid var(--line)}
 .legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;background:var(--c)}
 .st{font-size:12px;font-weight:700} .st.wait{color:var(--accent)} .st.arrived{color:var(--blue)} .st.billed{color:var(--green)}
 .months{display:flex;gap:6px;flex-wrap:wrap}
-.months button{border:1.5px solid var(--line);background:transparent;border-radius:4px;padding:6px 12px;font-weight:700;color:var(--muted);min-height:40px}
+.months button{border:1.5px solid var(--line);background:transparent;border-radius:4px;padding:6px 12px;font-weight:700;color:var(--muted);min-height:44px}
 .months button.on{background:var(--ink);color:var(--ground);border-color:var(--ink)}
 
 /* ⚙ 設定 */
