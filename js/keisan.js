@@ -10,6 +10,8 @@ export const KINDS = ["平日工場", "平日現場", "工場残業", "現場残
 export const WORK_KINDS = ["平日工場", "平日現場", "休日工場", "休日現場"];
 /** 会社の区分（見せる順） */
 export const GROUPS = ["自社", "常駐協力", "外注協力"];
+/** 持ち場の区分（工場＝製作、現場、その他）。11/4 持ち主：労務費を工場（製作）と現場に分けて見たい */
+export const PLACES = ["工場", "現場", "その他"];
 /** はじめの単価：1工数（8時間）20,000円 → 1時間 2,500円 */
 export const DEFAULT_RATE = 2500;
 export const DEFAULT_MINUS = "平日工場";
@@ -71,6 +73,17 @@ export function groupOf(name, workers, row) {
   return k && k !== "自社" ? "常駐協力" : "自社";
 }
 
+/** 日報の行の持ち場（kubun。日報の nippo.html の KUBUN）→ 工場・現場・その他
+ *  「工場」と名のつく所と北吉田（北吉田工場）→ 工場。
+ *  空・その他・設計・事務所・「倉庫番」のつく所 → その他（事務所・倉庫番は 11/5 持ち主が決定）。
+ *  のこり（現場・常駐先・ほかの会社の構内など）→ 現場 */
+export function placeOf(r) {
+  const k = String((r && r.kubun) || "").trim();
+  if (!k || k === "その他" || k === "設計" || k === "事務所" || k.includes("倉庫番")) return "その他";
+  if (k.includes("工場") || k.includes("北吉田")) return "工場";
+  return "現場";
+}
+
 /* ---------- 資材便の注文 ---------- */
 /** 材料費（税抜）：請求書の金額、まだなら納品書の金額、どちらもなければ null（金額まだ） */
 export const cost = o => (o.seikyu != null ? num(o.seikyu) : o.nouhin != null ? num(o.nouhin) : null);
@@ -102,10 +115,12 @@ export function jobStats(rows, orders, period, opts) {
   const rs = rows.filter(r => inPeriod(r.d, period));
   const os = orders.filter(o => inPeriod(orderDate(o, opts.matDate), period));
   const lg = Object.fromEntries(GROUPS.map(g => [g, 0]));
+  const lp = Object.fromEntries(PLACES.map(g => [g, 0]));
   let hours = 0, nk = 0;
   for (const r of rs) {
     const yen = laborOf(r, rateFor(opts.rates, r.d));
     lg[groupOf(r.n, opts.workers, r)] += yen;
+    lp[placeOf(r)] += yen;
     hours += net(r);
     nk += ninku(r);
   }
@@ -113,7 +128,7 @@ export function jobStats(rows, orders, period, opts) {
   const mat = os.reduce((a, o) => a + (cost(o) || 0), 0);
   const last = [...rs.map(r => String(r.d || "")), ...os.map(o => orderDate(o, opts.matDate))].filter(Boolean).sort().pop() || "";
   return {
-    rows: rs, ords: os, lg, labor, mat, total: labor + mat, hours, ninku: nk,
+    rows: rs, ords: os, lg, lp, labor, mat, total: labor + mat, hours, ninku: nk,
     noPrice: os.filter(o => cost(o) == null).length,
     mekki: os.filter(o => o.kind === "mekki").reduce((a, o) => a + (cost(o) || 0), 0),
     last,
@@ -160,10 +175,11 @@ export function allJobs({ rows, orders, jobs, period, kaisha, kotei, workers, ra
 
 /** 合計 */
 export function sumOf(list) {
-  const t = { labor: 0, mat: 0, noPrice: 0, ninku: 0, hours: 0, lg: Object.fromEntries(GROUPS.map(g => [g, 0])) };
+  const t = { labor: 0, mat: 0, noPrice: 0, ninku: 0, hours: 0, lg: Object.fromEntries(GROUPS.map(g => [g, 0])), lp: Object.fromEntries(PLACES.map(g => [g, 0])) };
   for (const x of list) {
     t.labor += x.s.labor; t.mat += x.s.mat; t.noPrice += x.s.noPrice; t.ninku += x.s.ninku; t.hours += x.s.hours;
     for (const g of GROUPS) t.lg[g] += x.s.lg[g];
+    for (const g of PLACES) t.lp[g] += x.s.lp[g];
   }
   return t;
 }

@@ -5,7 +5,7 @@ import { whoAmI, register, errorText } from "./touroku.js";
 import { watchConnected } from "./firebase.js";
 import { watchNippo } from "./nippo.js";
 import { watchOrders, watchCommon, watchDaicho } from "./zairyo.js";
-import { KINDS, GROUPS, rateTable, rateFor, net, laborOf, groupOf, cost, orderDate, allJobs, sumOf, monthsOf, jobStats, companyOf, koteiName } from "./keisan.js";
+import { KINDS, GROUPS, PLACES, rateTable, rateFor, net, laborOf, groupOf, cost, orderDate, allJobs, sumOf, monthsOf, jobStats, companyOf, koteiName } from "./keisan.js";
 import { openSettei } from "./settei.js";
 
 initTheme();
@@ -77,6 +77,9 @@ const D = { me: null, nippo: null, orders: null, ordersErr: "", common: null, da
 let PERIOD = "all";          // "all" か "YYYY-MM"
 let compF = null, seg = "open", q = "";
 let panelKey = null, panelMonth = "all";
+// 労務費の箱の内わけ：会社の区分（group）か、工場・現場（place）か。切りかえたら覚える
+let SPLIT = "group";
+try { if (localStorage.getItem("daicho-split") === "place") SPLIT = "place"; } catch (err) { }
 
 function showApp(me) {
   D.me = me;
@@ -143,9 +146,11 @@ function renderPeriod() {
 }
 
 function big3(t, n) {
+  const byPlace = SPLIT === "place";
+  const keys = byPlace ? PLACES : GROUPS, vals = byPlace ? t.lp : t.lg;
   return `
-  <div class="big labor"><div class="lab">労務費（日報から）</div><div class="val num">${yen(t.labor)}<small>円</small></div>
-    <div class="split num">${GROUPS.map(g => `<div><span class="l">${g}</span><b>${yen(t.lg[g])}<small>円</small></b></div>`).join("")}</div></div>
+  <div class="big labor"><div class="lab">労務費（日報から）<button class="mini" type="button" data-split title="内わけの分け方を切りかえる">${byPlace ? "会社で見る" : "工場・現場で見る"}</button></div><div class="val num">${yen(t.labor)}<small>円</small></div>
+    <div class="split num">${keys.map(g => `<div><span class="l">${g}</span><b>${yen(vals[g])}<small>円</small></b></div>`).join("")}</div></div>
   <div class="big mat"><div class="lab">材料費（資材便から）</div><div class="val num">${yen(t.mat)}<small>円</small></div>
     <div class="split num"><div><span class="l">金額がまだの注文</span><b class="${t.noPrice ? "warn" : ""}">${t.noPrice}<small>件</small></b></div></div></div>
   <div class="big total"><div class="lab">原価の合計</div><div class="val num">${yen(t.labor + t.mat)}<small>円</small></div>
@@ -163,8 +168,18 @@ function renderAll() {
   if (panelKey && panelOpen()) openJob(panelKey);
 }
 
+function wireSplit(el) {
+  const b = $("[data-split]", el);
+  if (b) b.addEventListener("click", () => {
+    SPLIT = SPLIT === "place" ? "group" : "place";
+    try { localStorage.setItem("daicho-split", SPLIT); } catch (err) { }
+    renderAll();
+  });
+}
+
 function renderHome() {
   $("#homeBig").innerHTML = big3(sumOf(LIST), LIST.length);
+  wireSplit($("#homeBig"));
   const comps = {};
   for (const x of LIST) { const c = x.comp.name; (comps[c] = comps[c] || { c, code: x.comp.code, items: [] }).items.push(x); }
   const arr = Object.values(comps).map(g => ({ ...g, t: sumOf(g.items) })).sort((a, b) => (b.t.labor + b.t.mat) - (a.t.labor + a.t.mat));
@@ -181,6 +196,7 @@ function renderJobs() {
   const all = LIST.filter(x => x.comp.name === compF);
   $("#jobsTitle").textContent = `${compF}（${periodText()}）`;
   $("#jobsBig").innerHTML = big3(sumOf(all), all.length);
+  wireSplit($("#jobsBig"));
   const c = { open: all.filter(x => !x.closed).length, closed: all.filter(x => x.closed).length, all: all.length };
   if (seg === "open" && !c.open && c.closed) seg = "all";
   $("#seg").innerHTML = [["open", "動いている", c.open], ["closed", "おわった", c.closed], ["all", "すべて", c.all]]
@@ -230,6 +246,7 @@ function openJob(key) {
   }
   const stTx = { wait: "待ち（届いていない）", arrived: "届いた（請求まだ）", billed: "請求ずみ" };
   const GCOL = { 自社: "var(--bar)", 常駐協力: "var(--bar2)", 外注協力: "var(--bar3)" };
+  const PCOL = { 工場: "var(--bar)", 現場: "var(--bar2)", その他: "var(--bar3)" };
   const ords = [...s.ords].sort((a, b) => (a.orderedAt || 0) - (b.orderedAt || 0));
   openPanel(`
    <div class="p-head"><div class="row"><span class="num muted">${esc(no || "注番なし")}</span><span class="muted" style="font-size:14px">${esc(comp.name)}</span><div class="sp"></div><button class="btn" type="button" data-close>✕ とじる</button></div>
@@ -244,6 +261,9 @@ function openJob(key) {
     <div class="sec"><h4>労務費の内わけ <span class="hint">会社の区分ごと</span></h4>
       <div class="stack">${GROUPS.map(g => `<i style="width:${s.labor ? s.lg[g] / s.labor * 100 : 0}%;background:${GCOL[g]}"></i>`).join("")}</div>
       <div class="legend">${GROUPS.map(g => `<span style="--c:${GCOL[g]}">${g} ${yen(s.lg[g])}円</span>`).join("")}</div></div>
+    <div class="sec"><h4>労務費の内わけ <span class="hint">工場（製作）・現場（日報の持ち場で分ける）</span></h4>
+      <div class="stack">${PLACES.map(g => `<i style="width:${s.labor ? s.lp[g] / s.labor * 100 : 0}%;background:${PCOL[g]}"></i>`).join("")}</div>
+      <div class="legend">${PLACES.map(g => `<span style="--c:${PCOL[g]}">${g} ${yen(s.lp[g])}円</span>`).join("")}</div></div>
     <div class="sec"><h4>時間の種類ごと <span class="hint">単価は ⚙ 設定 で変えられます（いつからも残ります）</span></h4>
       <table><thead><tr><th>種類</th><th class="r">時間</th><th class="r">金額</th></tr></thead><tbody>
       ${KINDS.filter(k => kindSum[k]).map(k => `<tr><td>${k}</td><td class="r num">${hrs(kindSum[k].h)}h</td><td class="r num">${yen(kindSum[k].yen)}円</td></tr>`).join("")}
