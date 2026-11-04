@@ -149,7 +149,7 @@ function big3(t, n) {
   const byPlace = SPLIT === "place";
   const keys = byPlace ? PLACES : GROUPS, vals = byPlace ? t.lp : t.lg;
   return `
-  <div class="big labor"><div class="lab">労務費（日報から）<button class="mini" type="button" data-split title="内わけの分け方を切りかえる">${byPlace ? "会社で見る" : "工場・現場で見る"}</button></div><div class="val num">${yen(t.labor)}<small>円</small></div>
+  <div class="big labor"><div class="lab">労務費（日報から）<span class="segmini" role="group" aria-label="内わけの分け方"><button type="button" data-split="group" class="${byPlace ? "" : "on"}" aria-pressed="${!byPlace}">会社ごと</button><button type="button" data-split="place" class="${byPlace ? "on" : ""}" aria-pressed="${byPlace}">工場・現場</button></span></div><div class="val num">${yen(t.labor)}<small>円</small></div>
     <div class="split num">${keys.map(g => `<div><span class="l">${g}</span><b>${yen(vals[g])}<small>円</small></b></div>`).join("")}</div></div>
   <div class="big mat"><div class="lab">材料費（資材便から）</div><div class="val num">${yen(t.mat)}<small>円</small></div>
     <div class="split num"><div><span class="l">金額がまだの注文</span><b class="${t.noPrice ? "warn" : ""}">${t.noPrice}<small>件</small></b></div></div></div>
@@ -169,12 +169,12 @@ function renderAll() {
 }
 
 function wireSplit(el) {
-  const b = $("[data-split]", el);
-  if (b) b.addEventListener("click", () => {
-    SPLIT = SPLIT === "place" ? "group" : "place";
+  $$("[data-split]", el).forEach(b => b.addEventListener("click", () => {
+    if (SPLIT === b.dataset.split) return;
+    SPLIT = b.dataset.split;
     try { localStorage.setItem("daicho-split", SPLIT); } catch (err) { }
     renderAll();
-  });
+  }));
 }
 
 function renderHome() {

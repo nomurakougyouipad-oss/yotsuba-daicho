@@ -62,8 +62,11 @@ input:focus,select:focus,button:focus-visible{outline:3px solid var(--accent);ou
 .big{background:var(--surface);border:1px solid var(--line);border-top:4px solid var(--line);border-radius:8px;padding:14px 18px;display:grid;gap:2px}
 .big.labor{border-top-color:var(--accent)} .big.mat{border-top-color:var(--blue)} .big.total{border-top-color:var(--accent);background:var(--surface2)}
 .big .lab{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap} .big.total .lab{color:var(--accent)}
-.mini{border:1.5px solid var(--line);background:var(--surface);border-radius:4px;padding:4px 10px;font-size:12px;font-weight:700;color:var(--muted);min-height:28px;margin-left:auto}
-.mini:hover{border-color:var(--amber);color:var(--ink)}
+.segmini{margin-left:auto;display:inline-flex;border:1.5px solid var(--line);border-radius:6px;overflow:hidden}
+.segmini button{border:0;background:transparent;padding:6px 12px;font-size:13px;font-weight:700;color:var(--muted);min-height:44px}
+.segmini button+button{border-left:1.5px solid var(--line)}
+.segmini button.on{background:var(--ink);color:var(--ground)}
+.segmini button:not(.on):hover{color:var(--ink)}
 .big .val{font-size:36px;line-height:1.1} .big.total .val{color:var(--accent)}
 .big .val small,.v small{font-size:15px;font-family:"M PLUS 1p",sans-serif;font-weight:700;margin-left:3px;color:var(--muted)}
 .split{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:8px;margin-top:6px}
