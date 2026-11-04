@@ -73,15 +73,37 @@ export function groupOf(name, workers, row) {
   return k && k !== "自社" ? "常駐協力" : "自社";
 }
 
-/** 日報の行の持ち場（kubun。日報の nippo.html の KUBUN）→ 工場・現場・その他
- *  「工場」と名のつく所と北吉田（北吉田工場）→ 工場。
- *  空・その他・設計・事務所・「倉庫番」のつく所 → その他（事務所・倉庫番は 11/5 持ち主が決定）。
- *  のこり（現場・常駐先・ほかの会社の構内など）→ 現場 */
+/** 時間の種類 → 工場・現場（11/5 持ち主：持ち場だけで分けると、現場の日に工場の時間をつけた行が現場に入ってしまう）
+ *  工場＝平日工場・工場残業・休日工場、現場＝平日現場・現場残業・休日現場。
+ *  どちらでもない種類（移動行き・移動帰り・早出・深夜・突発）は、その行の持ち場（placeOf）で分ける */
+export const PLACE_OF_KIND = { 平日工場: "工場", 工場残業: "工場", 休日工場: "工場", 平日現場: "現場", 現場残業: "現場", 休日現場: "現場" };
+
+/** 日報の行の持ち場（kubun）→ 工場・現場・その他（種類で決まらない時間に使う）
+ *  「工場」と名のつく所と北吉田（北吉田工場）→ 工場。空・その他・設計・事務所・倉庫番 → その他。のこり（現場・常駐など）→ 現場 */
 export function placeOf(r) {
   const k = String((r && r.kubun) || "").trim();
   if (!k || k === "その他" || k === "設計" || k === "事務所" || k.includes("倉庫番")) return "その他";
   if (k.includes("工場") || k.includes("北吉田")) return "工場";
   return "現場";
+}
+
+/** 1行の労務費を 工場・現場・その他 に分ける。合計は laborOf(r, rs) と同じになる（遅刻・早退の分は、いちばん大きい所から引く） */
+export function laborByPlace(r, rs) {
+  const out = Object.fromEntries(PLACES.map(g => [g, 0]));
+  const h = r.h || {};
+  const fallback = placeOf(r);
+  for (const k of KINDS) {
+    const v = num(h[k]);
+    if (v) out[PLACE_OF_KIND[k] || fallback] += v * (rs.kinds[k] || 0);
+  }
+  const want = laborOf(r, rs);
+  const diff = PLACES.reduce((a, g) => a + out[g], 0) - want;
+  if (diff) {
+    const big = PLACES.reduce((a, g) => (out[g] > out[a] ? g : a), PLACES[0]);
+    out[big] -= diff;
+  }
+  for (const g of PLACES) out[g] = Math.round(out[g]);
+  return out;
 }
 
 /* ---------- 資材便の注文 ---------- */
@@ -120,7 +142,8 @@ export function jobStats(rows, orders, period, opts) {
   for (const r of rs) {
     const yen = laborOf(r, rateFor(opts.rates, r.d));
     lg[groupOf(r.n, opts.workers, r)] += yen;
-    lp[placeOf(r)] += yen;
+    const byPlace = laborByPlace(r, rateFor(opts.rates, r.d));
+    for (const g of PLACES) lp[g] += byPlace[g];
     hours += net(r);
     nk += ninku(r);
   }

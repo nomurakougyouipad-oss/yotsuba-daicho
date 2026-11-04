@@ -1,6 +1,6 @@
 // 計算のたしかめ（ブラウザも Firebase もいらない）：node tools/test-keisan.mjs
 // 「OK」が並べばよい。「NG」が出たら js/keisan.js を直す
-import { KINDS, PLACES, placeOf, rateTable, rateFor, net, ninku, laborOf, groupOf, cost, orderDate, jobStats, allJobs, sumOf, companyOf, monthsOf } from "../js/keisan.js";
+import { KINDS, PLACES, placeOf, laborByPlace, rateTable, rateFor, net, ninku, laborOf, groupOf, cost, orderDate, jobStats, allJobs, sumOf, companyOf, monthsOf } from "../js/keisan.js";
 
 let bad = 0;
 const eq = (name, got, want) => {
@@ -88,21 +88,24 @@ eq("月の一覧（新しい順）", monthsOf(rows, orders, "ordered"), ["2026-1
 eq("companyOf 固定（CC26888）", companyOf("CC26888", kaisha, kotei).code, "固定");
 eq("KINDS は 11こ", KINDS.length, 11);
 
-// 9) 持ち場 → 工場・現場・その他（11/4。事務所・倉庫番は 11/5）
-eq("「工場」と名のつく持ち場は工場", placeOf({ kubun: "見本工場" }), "工場");
+// 9) 工場・現場・その他（11/5：時間の種類で分け、どちらでもない種類は持ち場で分ける）
+eq("工場と名のつく持ち場は工場", placeOf({ kubun: "見本工場" }), "工場");
 eq("北吉田は工場", placeOf({ kubun: "北吉田" }), "工場");
-eq("現場は現場", placeOf({ kubun: "現場" }), "現場");
-eq("常駐先・ほかの会社の構内・緑化は現場", [placeOf({ kubun: "見本常駐" }), placeOf({ kubun: "見本製鉄" }), placeOf({ kubun: "緑化" }), placeOf({ kubun: "見本発電所" })], ["現場", "現場", "現場", "現場"]);
-eq("設計・その他・空はその他", [placeOf({ kubun: "設計" }), placeOf({ kubun: "その他" }), placeOf({})], ["その他", "その他", "その他"]);
-eq("事務所・倉庫番はその他", [placeOf({ kubun: "事務所" }), placeOf({ kubun: "見本倉庫番" })], ["その他", "その他"]);
+eq("現場・常駐は現場", [placeOf({ kubun: "現場" }), placeOf({ kubun: "見本常駐" })], ["現場", "現場"]);
+eq("設計・事務所・倉庫番・その他・空はその他", [placeOf({ kubun: "設計" }), placeOf({ kubun: "事務所" }), placeOf({ kubun: "見本倉庫番" }), placeOf({ kubun: "その他" }), placeOf({})], ["その他", "その他", "その他", "その他", "その他"]);
 {
-  const rows2 = [
-    { d: "2026-10-01", n: "見本A", no: "AA26001", kubun: "見本工場", h: { 平日工場: 8 } },
-    { d: "2026-10-02", n: "見本A", no: "AA26001", kubun: "現場", h: { 平日現場: 8, 移動行き: 1 } },
-    { d: "2026-10-03", n: "見本A", no: "AA26001", kubun: "設計", h: { 平日工場: 2 } },
-  ];
+  const rs = rateTable(null)[0] || { kinds: Object.fromEntries(KINDS.map(k => [k, 2500])), minus: "平日工場" };
+  const r1 = { d: "2026-10-01", kubun: "現場", h: { 平日工場: 8, 工場残業: 2 } };
+  eq("持ち場が現場でも、工場の時間は工場に入る", laborByPlace(r1, rs), { 工場: 25000, 現場: 0, その他: 0 });
+  const r2 = { d: "2026-10-02", kubun: "現場", h: { 平日現場: 8, 深夜: 2, 移動行き: 1 } };
+  eq("深夜・移動は、その行の持ち場（現場）に入る", laborByPlace(r2, rs), { 工場: 0, 現場: 27500, その他: 0 });
+  const r3 = { d: "2026-10-03", kubun: "設計", h: { 早出: 1 } };
+  eq("持ち場が設計の早出はその他", laborByPlace(r3, rs), { 工場: 0, 現場: 0, その他: 2500 });
+  const r4 = { d: "2026-10-04", kubun: "現場", h: { 平日工場: 2, 平日現場: 6 }, late: 1 };
+  eq("遅刻は大きいほう（現場）から引く。合計は労務費と同じ", [laborByPlace(r4, rs), PLACES.reduce((a, g) => a + laborByPlace(r4, rs)[g], 0)], [{ 工場: 5000, 現場: 12500, その他: 0 }, 17500]);
+  const rows2 = [r1, r2, r3, r4].map((r, i) => ({ ...r, n: "見本A", no: "AA26001" }));
   const s2 = jobStats(rows2, [], "all", { workers: new Map(), rates: rateTable(null), matDate: "ordered" });
-  eq("工場・現場・その他の労務費", s2.lp, { 工場: 20000, 現場: 22500, その他: 5000 });
+  eq("工事の工場・現場・その他", s2.lp, { 工場: 30000, 現場: 40000, その他: 2500 });
   eq("工場＋現場＋その他＝労務費の合計", PLACES.reduce((a, g) => a + s2.lp[g], 0), s2.labor);
 }
 

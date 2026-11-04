@@ -261,7 +261,7 @@ function openJob(key) {
     <div class="sec"><h4>労務費の内わけ <span class="hint">会社の区分ごと</span></h4>
       <div class="stack">${GROUPS.map(g => `<i style="width:${s.labor ? s.lg[g] / s.labor * 100 : 0}%;background:${GCOL[g]}"></i>`).join("")}</div>
       <div class="legend">${GROUPS.map(g => `<span style="--c:${GCOL[g]}">${g} ${yen(s.lg[g])}円</span>`).join("")}</div></div>
-    <div class="sec"><h4>労務費の内わけ <span class="hint">工場（製作）・現場（日報の持ち場で分ける）</span></h4>
+    <div class="sec"><h4>労務費の内わけ <span class="hint">工場（製作）・現場（時間の種類で分ける。移動・早出・深夜・突発は持ち場で）</span></h4>
       <div class="stack">${PLACES.map(g => `<i style="width:${s.labor ? s.lp[g] / s.labor * 100 : 0}%;background:${PCOL[g]}"></i>`).join("")}</div>
       <div class="legend">${PLACES.map(g => `<span style="--c:${PCOL[g]}">${g} ${yen(s.lp[g])}円</span>`).join("")}</div></div>
     <div class="sec"><h4>時間の種類ごと <span class="hint">単価は ⚙ 設定 で変えられます（いつからも残ります）</span></h4>
