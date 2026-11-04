@@ -1,0 +1,41 @@
+{
+  "_説明": "台帳の分のルール。資材便のフォルダの database.rules.json に、tools/rules-add.mjs で足す（HANDOFF 4-0・4-1）。このファイルを直接 firebase deploy しない",
+  "_台帳の端末": "auth != null && auth.token.dc_role == 'office' && root.child('daicho/devices/' + auth.uid + '/role').val() == 'office'",
+  "daicho": {
+    "devices": {
+      ".read": "auth != null && auth.token.dc_role == 'office' && root.child('daicho/devices/' + auth.uid + '/role').val() == 'office'",
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "seenAt": {
+          ".write": "auth != null && auth.uid == $uid && data.parent().child('role').exists() && data.parent().child('role').val() == auth.token.dc_role",
+          ".validate": "newData.isNumber() && newData.val() == now"
+        },
+        "kiki": {
+          ".write": "auth != null && auth.uid == $uid && data.parent().child('role').exists() && data.parent().child('role').val() == auth.token.dc_role",
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        }
+      }
+    },
+    "rates": {
+      ".read": "auth != null && auth.token.dc_role == 'office' && root.child('daicho/devices/' + auth.uid + '/role').val() == 'office'",
+      ".write": "auth != null && auth.token.dc_role == 'office' && root.child('daicho/devices/' + auth.uid + '/role').val() == 'office'",
+      "$from": {
+        ".validate": "$from.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) && newData.hasChildren(['kinds'])",
+        "kinds": {
+          "$kind": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 1000000" }
+        },
+        "minus": { ".validate": "newData.isString() && newData.val().length <= 10" },
+        "setAt": { ".validate": "newData.isNumber()" },
+        "setBy": { ".validate": "newData.isString() && newData.val().length <= 40" },
+        "memo": { ".validate": "newData.isString() && newData.val().length <= 100" },
+        "$other": { ".validate": false }
+      }
+    },
+    "settei": {
+      ".read": "auth != null && auth.token.dc_role == 'office' && root.child('daicho/devices/' + auth.uid + '/role').val() == 'office'",
+      ".write": "auth != null && auth.token.dc_role == 'office' && root.child('daicho/devices/' + auth.uid + '/role').val() == 'office'",
+      "matDate": { ".validate": "newData.val() == 'ordered' || newData.val() == 'arrived' || newData.val() == 'billed'" },
+      "$other": { ".validate": false }
+    }
+  }
+}

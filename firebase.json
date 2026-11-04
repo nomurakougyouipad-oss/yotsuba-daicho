@@ -1,0 +1,10 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "daicho",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "*-debug.log", "*.local"]
+    }
+  ]
+}

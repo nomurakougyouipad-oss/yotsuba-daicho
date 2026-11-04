@@ -1,0 +1,260 @@
+// よつば台帳（index.html）── 工事ごとの原価（1回目：労務費＝日報、材料費＝資材便）
+// 登録していない → 台帳の合言葉＋このパソコンの名前 → 登録ずみの画面（最初の画面・工事の一覧・くわしく・⚙ 設定）
+import { $, $$, esc, yen, hrs, nk, mdText, ymText, initTheme, initPanel, openPanel, closePanel, panelOpen, toast } from "./common.js";
+import { whoAmI, register, errorText } from "./touroku.js";
+import { watchConnected } from "./firebase.js";
+import { watchNippo } from "./nippo.js";
+import { watchOrders, watchCommon, watchDaicho } from "./zairyo.js";
+import { KINDS, GROUPS, rateTable, rateFor, net, laborOf, groupOf, cost, orderDate, allJobs, sumOf, monthsOf, jobStats, companyOf, koteiName } from "./keisan.js";
+import { openSettei } from "./settei.js";
+
+initTheme();
+initPanel();
+const main = $("#main");
+start();
+
+async function start() {
+  main.innerHTML = '<section class="card"><p class="muted">しらべています…</p></section>';
+  let me;
+  try {
+    me = await whoAmI();
+  } catch (ex) {
+    main.innerHTML = `<section class="card"><h2>つながりません</h2><p class="err">${esc(errorText(ex))}</p>
+      <button class="btn big" type="button" id="retry">もう一度</button></section>`;
+    $("#retry").addEventListener("click", start);
+    return;
+  }
+  if (me && me.role === "office") return showApp(me);
+  showCode(me);
+}
+
+/* ---------- 台帳の合言葉と、このパソコンの名前を入れる ---------- */
+function showCode(me) {
+  $("#who").textContent = "工事ごとの原価";
+  main.innerHTML = `
+    <section class="card narrow-card">
+      <h2>はじめての登録</h2>
+      ${me && me.removed ? '<p class="warn">このパソコンの登録は消されています。もう一度登録してください。</p>' : ""}
+      ${me && me.lost ? '<p class="warn">このパソコンに覚えていた登録が、消えていました。もう一度登録してください。</p>' : ""}
+      ${me && me.zairyo ? '<p class="note"><b>このブラウザは資材便にも登録されています。</b>台帳は、資材便とは別のブラウザ（例：資材便＝Chrome、台帳＝Edge）で開く決まりです。別のブラウザで開きなおしてください。</p>' : ""}
+      <p class="hint">台帳はお金の情報です。「台帳の合言葉」で登録したパソコンだけが見られます。合言葉は持ち主から口で聞いてください。</p>
+      <form id="codeForm" class="form" novalidate>
+        <div class="field">
+          <label for="code">台帳の合言葉</label>
+          <input id="code" class="inp" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="pcName">このパソコンの名前</label>
+          <input id="pcName" class="inp" type="text" maxlength="20" autocomplete="off" placeholder="例：社長のノートパソコン">
+          <p class="hint">登録した端末の一覧で、どのパソコンか分かるようにするためです。</p>
+        </div>
+        <p class="err" id="err" role="alert"></p>
+        <button class="btn primary big full" type="submit" id="go">登録する</button>
+      </form>
+    </section>`;
+  const go = $("#go"), err = $("#err");
+  $("#codeForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const code = $("#code").value, name = $("#pcName").value.trim();
+    if (!code.trim()) { err.textContent = "合言葉を入れてください"; return; }
+    if (!name) { err.textContent = "このパソコンの名前を入れてください"; return; }
+    go.disabled = true;
+    go.textContent = "登録しています…";
+    err.textContent = "";
+    try {
+      await register(code, name);
+      start();
+    } catch (ex) {
+      err.textContent = errorText(ex);
+      go.disabled = false;
+      go.textContent = "登録する";
+    }
+  });
+}
+
+/* ---------- 登録ずみ：原価の画面 ---------- */
+const D = { me: null, nippo: null, orders: null, ordersErr: "", common: null, daicho: null, connected: null };
+let PERIOD = "all";          // "all" か "YYYY-MM"
+let compF = null, seg = "open", q = "";
+let panelKey = null, panelMonth = "all";
+
+function showApp(me) {
+  D.me = me;
+  $("#who").textContent = `工事ごとの原価・${me.name}`;
+  $("#period").hidden = false;
+  $("#btnSettei").hidden = false;
+  $("#btnSettei").addEventListener("click", () => { panelKey = null; openSettei(me, D); });
+  main.innerHTML = `
+    <div id="notes"></div>
+    <section id="home">
+      <div class="big3" id="homeBig"></div>
+      <h2 class="sec-title" style="margin-top:16px">お客さん（注番の頭2文字）を選ぶ</h2>
+      <div class="tiles" id="tiles"></div>
+    </section>
+    <section id="jobs" hidden>
+      <div class="jhead"><button class="btn" id="btnBack" type="button">← お客さん一覧にもどる</button><h2 id="jobsTitle"></h2></div>
+      <div class="big3" id="jobsBig" style="margin-top:12px"></div>
+      <div class="tools" style="margin-top:12px">
+        <div class="seg" id="seg"></div><div class="sp"></div>
+        <input type="search" id="q" placeholder="注番や件名でさがす" aria-label="注番や件名でさがす">
+      </div>
+      <div class="list" id="list" style="margin-top:12px"></div>
+    </section>`;
+  $("#btnBack").addEventListener("click", () => { compF = null; $("#jobs").hidden = true; $("#home").hidden = false; renderAll(); scrollTo({ top: 0 }); });
+  $("#q").addEventListener("input", e => { q = e.target.value; renderList(); });
+
+  watchConnected(on => { D.connected = on; renderNotes(); });
+  watchNippo(v => { D.nippo = v; renderAll(); }, err => { D.nippoErr = String((err && err.message) || err); renderNotes(); });
+  watchOrders(v => { D.orders = v; D.ordersErr = ""; renderAll(); }, err => { D.orders = D.orders || []; D.ordersErr = /permission/i.test(String(err && err.message)) ? "perm" : String((err && err.message) || err); renderAll(); });
+  watchCommon(v => { D.common = v; renderAll(); }, err => { D.common = D.common || { kaisha: {}, kotei: {} }; D.commonErr = /permission/i.test(String(err && err.message)) ? "perm" : String((err && err.message) || err); renderAll(); });
+  watchDaicho(v => { D.daicho = v; renderAll(); }, err => { D.daicho = D.daicho || { rates: {}, settei: {} }; D.daichoErr = String((err && err.message) || err); renderAll(); });
+  renderAll();
+}
+
+const ready = () => D.nippo && D.orders && D.common && D.daicho;
+const opts = () => ({
+  rows: D.nippo.rows, orders: D.orders, jobs: D.nippo.jobs, kaisha: D.common.kaisha, kotei: D.common.kotei,
+  workers: D.nippo.workers, rates: rateTable(D.daicho.rates), matDate: (D.daicho.settei && D.daicho.settei.matDate) || "ordered",
+});
+const periodText = () => (PERIOD === "all" ? "工事の全期間" : `${ymText(PERIOD)}の分`);
+
+function renderNotes() {
+  const el = $("#notes");
+  if (!el) return;
+  const n = [];
+  if (D.connected === false) n.push('<div class="note bad"><b>Firebase につながっていません。</b>ネットをたしかめてください。つながると自動でもどります。</div>');
+  if (D.nippoErr) n.push(`<div class="note bad"><b>日報が読めません。</b>${esc(D.nippoErr)}</div>`);
+  if (!D.nippo) n.push('<div class="note">日報を読んでいます…</div>');
+  if (D.ordersErr === "perm") n.push('<div class="note bad"><b>資材便を読む許可がまだです。</b>材料費が 0 のままになります。持ち主（Claude Code）が、ルールに「台帳の端末も読める」を足すと直ります（HANDOFF 4-1 の 4）。</div>');
+  else if (D.ordersErr) n.push(`<div class="note bad"><b>資材便が読めません。</b>${esc(D.ordersErr)}</div>`);
+  if (D.commonErr === "perm") n.push('<div class="note bad"><b>注番の会社の表（/common）を読む許可がまだです。</b>お客さんの名前が「頭文字 ○○」になります。</div>');
+  if (D.daicho && !Object.keys(D.daicho.rates || {}).length) n.push('<div class="note">単価はまだ決めていないので、<b>全部 1時間 2,500円</b>（1工数 20,000円）で計算しています。⚙ 設定で変えられます。</div>');
+  el.innerHTML = n.join("");
+}
+
+function renderPeriod() {
+  const el = $("#period");
+  const months = ready() ? monthsOf(D.nippo.rows, D.orders, opts().matDate) : [];
+  if (PERIOD !== "all" && !months.includes(PERIOD)) PERIOD = "all";
+  el.innerHTML = `<button class="tab ${PERIOD === "all" ? "on" : ""}" type="button" data-p="all">工事の全期間</button>
+    <select id="pm" aria-label="月をえらぶ"><option value="">月をえらぶ…</option>${months.map(m => `<option value="${m}" ${PERIOD === m ? "selected" : ""}>${ymText(m)}</option>`).join("")}</select>`;
+  $("[data-p]", el).addEventListener("click", () => { PERIOD = "all"; renderAll(); });
+  $("#pm").addEventListener("change", e => { if (e.target.value) { PERIOD = e.target.value; renderAll(); } });
+}
+
+function big3(t, n) {
+  return `
+  <div class="big labor"><div class="lab">労務費（日報から）</div><div class="val num">${yen(t.labor)}<small>円</small></div>
+    <div class="split num">${GROUPS.map(g => `<div><span class="l">${g}</span><b>${yen(t.lg[g])}<small>円</small></b></div>`).join("")}</div></div>
+  <div class="big mat"><div class="lab">材料費（資材便から）</div><div class="val num">${yen(t.mat)}<small>円</small></div>
+    <div class="split num"><div><span class="l">金額がまだの注文</span><b class="${t.noPrice ? "warn" : ""}">${t.noPrice}<small>件</small></b></div></div></div>
+  <div class="big total"><div class="lab">原価の合計</div><div class="val num">${yen(t.labor + t.mat)}<small>円</small></div>
+    <div class="split num"><div><span class="l">工事の数</span><b>${n}<small>件</small></b></div><div><span class="l">人工（にんく）</span><b>${nk(t.ninku)}<small>人工</small></b></div></div></div>`;
+}
+
+let LIST = [];
+function renderAll() {
+  renderNotes();
+  if (!$("#home")) return;
+  renderPeriod();
+  if (!ready()) { $("#homeBig").innerHTML = ""; $("#tiles").innerHTML = '<div class="empty">読んでいます…</div>'; return; }
+  LIST = allJobs({ ...opts(), period: PERIOD });
+  if (compF) renderJobs(); else renderHome();
+  if (panelKey && panelOpen()) openJob(panelKey);
+}
+
+function renderHome() {
+  $("#homeBig").innerHTML = big3(sumOf(LIST), LIST.length);
+  const comps = {};
+  for (const x of LIST) { const c = x.comp.name; (comps[c] = comps[c] || { c, code: x.comp.code, items: [] }).items.push(x); }
+  const arr = Object.values(comps).map(g => ({ ...g, t: sumOf(g.items) })).sort((a, b) => (b.t.labor + b.t.mat) - (a.t.labor + a.t.mat));
+  $("#tiles").innerHTML = arr.map(g => `<button class="tile ${g.items.every(x => x.closed) ? "idle" : ""}" type="button" data-c="${esc(g.c)}">
+    <div class="tname">${esc(g.c)}${g.code && g.code !== "固定" ? `<span class="code">${esc(g.code)}</span>` : ""}</div>
+    <div class="trows"><div><span class="lab">工事</span><b class="num">${g.items.length}</b></div>
+      <div><span class="lab">労務費＋材料費</span><b class="num tot">${yen(g.t.labor + g.t.mat)}</b></div>
+      <div><span class="lab">金額まだの注文</span><b class="num">${g.t.noPrice || "–"}</b></div></div></button>`).join("")
+    || `<div class="empty">${esc(periodText())}の記録はありません</div>`;
+  $$("#tiles .tile").forEach(b => b.addEventListener("click", () => { compF = b.dataset.c; seg = "open"; q = ""; $("#q").value = ""; $("#home").hidden = true; $("#jobs").hidden = false; renderJobs(); scrollTo({ top: 0 }); }));
+}
+
+function renderJobs() {
+  const all = LIST.filter(x => x.comp.name === compF);
+  $("#jobsTitle").textContent = `${compF}（${periodText()}）`;
+  $("#jobsBig").innerHTML = big3(sumOf(all), all.length);
+  const c = { open: all.filter(x => !x.closed).length, closed: all.filter(x => x.closed).length, all: all.length };
+  if (seg === "open" && !c.open && c.closed) seg = "all";
+  $("#seg").innerHTML = [["open", "動いている", c.open], ["closed", "おわった", c.closed], ["all", "すべて", c.all]]
+    .map(([k, l, n]) => `<button class="tab ${seg === k ? "on" : ""}" type="button" data-k="${k}">${l} <small>${n}</small></button>`).join("");
+  $$("#seg .tab").forEach(b => b.addEventListener("click", () => { seg = b.dataset.k; renderJobs(); }));
+  renderList();
+}
+
+function renderList() {
+  const all = LIST.filter(x => x.comp.name === compF);
+  const qq = q.trim().toLowerCase();
+  const rows = all.filter(x => seg === "all" || (seg === "closed" ? x.closed : !x.closed))
+    .filter(x => !qq || (x.no + x.name + x.owner).toLowerCase().includes(qq))
+    .sort((a, b) => b.s.total - a.s.total);
+  $("#list").innerHTML = rows.map(x => `<button class="job ${x.closed ? "closed" : ""} ${x.free ? "free" : ""}" type="button" data-k="${esc(x.key)}">
+    <div class="jname"><h3>${esc(x.name)}</h3><div class="meta">${x.no ? `<span>注番 <b>${esc(x.no)}</b></span>` : '<span class="chip free">注番なし</span>'}${x.owner ? `<span>担当 ${esc(x.owner)}</span>` : ""}${x.closed ? '<span class="chip end">おわった</span>' : ""}${!x.free && !x.inNippo ? '<span class="chip free">日報の注番にない</span>' : ""}<span>最後 ${esc(mdText(x.s.last))}</span></div></div>
+    <div class="cell"><div class="lab">人工</div><div class="v num">${nk(x.s.ninku)}</div></div>
+    <div class="cell"><div class="lab">労務費</div><div class="v num">${yen(x.s.labor)}<small>円</small></div></div>
+    <div class="cell"><div class="lab">材料費</div><div class="v num">${yen(x.s.mat)}<small>円</small></div>${x.s.noPrice ? `<div class="sub warn">金額まだ ${x.s.noPrice}件</div>` : ""}</div>
+    <div class="cell"><div class="lab">原価の合計</div><div class="v num tot">${yen(x.s.total)}<small>円</small></div></div></button>`).join("")
+    || '<div class="empty">この条件の工事はありません</div>';
+  $$("#list .job").forEach(b => b.addEventListener("click", () => { panelMonth = "all"; openJob(b.dataset.k); }));
+}
+
+/* ---------- 工事の原価（くわしく） ---------- */
+function openJob(key) {
+  panelKey = key;
+  const o = opts();
+  const free = key.startsWith("free:"), no = free ? "" : key;
+  const rowsAll = o.rows.filter(r => (r.no ? r.no : "free:" + (r.j || "")) === key);
+  const ordsAll = o.orders.filter(x => x.chuban === key);
+  const ms = monthsOf(rowsAll, ordsAll, o.matDate).sort();
+  if (panelMonth !== "all" && !ms.includes(panelMonth)) panelMonth = "all";
+  const s = jobStats(rowsAll, ordsAll, panelMonth, o);
+  const j = o.jobs.get(no);
+  const name = free ? key.slice(5) : (j && j.name) || koteiName(no, o.kotei) || (ordsAll[0] && ordsAll[0].kenmei) || "（日報の注番にない）";
+  const comp = companyOf(no, o.kaisha, o.kotei);
+  const kindSum = {}, per = {};
+  let lateH = 0, minusYen = 0;
+  for (const r of s.rows) {
+    const rs = rateFor(o.rates, r.d);
+    for (const k of KINDS) { const v = Number((r.h || {})[k]) || 0; if (v) { kindSum[k] = kindSum[k] || { h: 0, yen: 0 }; kindSum[k].h += v; kindSum[k].yen += v * rs.kinds[k]; } }
+    const m = (Number(r.late) || 0) + (Number(r.early) || 0);
+    lateH += m; minusYen += m * (rs.kinds[rs.minus] || 0);
+    const p = per[r.n] = per[r.n] || { n: r.n, g: groupOf(r.n, o.workers, r), h: 0, yen: 0, days: new Set() };
+    p.h += net(r); p.yen += laborOf(r, rs); p.days.add(r.d);
+  }
+  const stTx = { wait: "待ち（届いていない）", arrived: "届いた（請求まだ）", billed: "請求ずみ" };
+  const GCOL = { 自社: "var(--bar)", 常駐協力: "var(--bar2)", 外注協力: "var(--bar3)" };
+  const ords = [...s.ords].sort((a, b) => (a.orderedAt || 0) - (b.orderedAt || 0));
+  openPanel(`
+   <div class="p-head"><div class="row"><span class="num muted">${esc(no || "注番なし")}</span><span class="muted" style="font-size:14px">${esc(comp.name)}</span><div class="sp"></div><button class="btn" type="button" data-close>✕ とじる</button></div>
+     <h2>${esc(name)}</h2>
+     <div class="months"><button type="button" data-m="all" class="${panelMonth === "all" ? "on" : ""}">工事の全期間</button>${ms.map(m => `<button type="button" data-m="${m}" class="${panelMonth === m ? "on" : ""}">${ymText(m)}</button>`).join("")}</div></div>
+   <div class="p-body">
+    <div class="sec"><div class="big3">
+      <div class="big labor"><div class="lab">労務費</div><div class="val num" style="font-size:26px">${yen(s.labor)}<small>円</small></div><div class="lab">${nk(s.ninku)} 人工・${hrs(s.hours)} 時間</div></div>
+      <div class="big mat"><div class="lab">材料費</div><div class="val num" style="font-size:26px">${yen(s.mat)}<small>円</small></div><div class="lab ${s.noPrice ? "warn" : ""}">${s.noPrice ? `金額まだ ${s.noPrice}件` : "金額まだ なし"}</div></div>
+      <div class="big total"><div class="lab">原価の合計</div><div class="val num" style="font-size:26px">${yen(s.total)}<small>円</small></div><div class="lab">${panelMonth === "all" ? "工事の全期間" : ymText(panelMonth) + "の分"}</div></div>
+    </div></div>
+    <div class="sec"><h4>労務費の内わけ <span class="hint">会社の区分ごと</span></h4>
+      <div class="stack">${GROUPS.map(g => `<i style="width:${s.labor ? s.lg[g] / s.labor * 100 : 0}%;background:${GCOL[g]}"></i>`).join("")}</div>
+      <div class="legend">${GROUPS.map(g => `<span style="--c:${GCOL[g]}">${g} ${yen(s.lg[g])}円</span>`).join("")}</div></div>
+    <div class="sec"><h4>時間の種類ごと <span class="hint">単価は ⚙ 設定 で変えられます（いつからも残ります）</span></h4>
+      <table><thead><tr><th>種類</th><th class="r">時間</th><th class="r">金額</th></tr></thead><tbody>
+      ${KINDS.filter(k => kindSum[k]).map(k => `<tr><td>${k}</td><td class="r num">${hrs(kindSum[k].h)}h</td><td class="r num">${yen(kindSum[k].yen)}円</td></tr>`).join("")}
+      ${lateH ? `<tr><td>遅刻・早退（引く）</td><td class="r num">−${hrs(lateH)}h</td><td class="r num">−${yen(minusYen)}円</td></tr>` : ""}
+      <tr class="sum"><td>合計</td><td class="r num">${hrs(s.hours)}h</td><td class="r num">${yen(s.labor)}円</td></tr></tbody></table></div>
+    <div class="sec"><h4>人ごと</h4><table><thead><tr><th>名前</th><th>区分</th><th class="r">日数</th><th class="r">時間</th><th class="r">労務費</th></tr></thead><tbody>
+      ${Object.values(per).sort((a, b) => b.yen - a.yen).map(p => `<tr><td>${esc(p.n)}</td><td class="muted">${p.g}</td><td class="r num">${p.days.size}</td><td class="r num">${hrs(p.h)}h</td><td class="r num">${yen(p.yen)}円</td></tr>`).join("") || '<tr><td colspan="5" class="muted">日報はまだありません</td></tr>'}</tbody></table></div>
+    <div class="sec"><h4>材料（資材便の注文）<span class="hint">材料費＝請求書の金額、まだなら納品書の金額（税抜）</span></h4><table><thead><tr><th>材料屋</th><th>日</th><th>ようす</th><th class="r">金額</th></tr></thead><tbody>
+      ${ords.map(x => `<tr><td>${esc(x.supplierName || x.supplier || "")}${x.kind === "mekki" ? ' <span class="chip">めっき</span>' : x.kind === "kakou" ? ' <span class="chip">加工品</span>' : ""}</td><td class="num muted">${esc(mdText(orderDate(x, o.matDate)))}</td><td class="st ${esc(x.status || "")}">${stTx[x.status] || esc(x.status || "")}</td><td class="r num">${cost(x) == null ? '<span class="warn">まだ</span>' : yen(cost(x)) + "円"}</td></tr>`).join("") || '<tr><td colspan="4" class="muted">注文はありません</td></tr>'}
+      ${ords.length ? `<tr class="sum"><td colspan="2">合計</td><td>${s.mekki ? `うち めっき ${yen(s.mekki)}円` : ""}</td><td class="r num">${yen(s.mat)}円</td></tr>` : ""}</tbody></table></div>
+   </div>`, p => {
+    $$("[data-m]", p).forEach(b => b.addEventListener("click", () => { panelMonth = b.dataset.m; openJob(key); }));
+  });
+}

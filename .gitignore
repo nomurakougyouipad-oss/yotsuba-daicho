@@ -1,0 +1,15 @@
+# 置き場（GitHub）に入れないもの。置き場はだれでも見られる（GitHub Pages のため）
+# 引き渡しの資料・試作・Claude Code など AI への決まりごと（お客さんの名前・注番・しくみの説明が入っているため。資材便と同じ。11/4 持ち主が決定）
+HANDOFF.md
+CLAUDE.md
+AGENTS.md
+docs/
+prototype/
+# このパソコンだけで使うもの
+.claude/
+# 道具が作るもの
+node_modules/
+functions/node_modules/
+rules/merged-preview.json
+*-debug.log
+.firebase/
