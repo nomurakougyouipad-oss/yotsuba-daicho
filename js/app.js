@@ -75,7 +75,7 @@ function showCode(me) {
 /* ---------- 登録ずみ：原価の画面 ---------- */
 const D = { me: null, nippo: null, orders: null, ordersErr: "", common: null, daicho: null, connected: null };
 let PERIOD = "all";          // "all" か "YYYY-MM"
-let compF = null, seg = "open", q = "";
+let compF = null, groupF = null, seg = "open", q = "";
 let panelKey = null, panelMonth = "all";
 // 労務費の箱の内わけ：会社の区分（group）か、工場・現場（place）か。切りかえたら覚える
 let SPLIT = "group";
@@ -94,8 +94,14 @@ function showApp(me) {
       <h2 class="sec-title" style="margin-top:16px">お客さん（注番の頭2文字）を選ぶ</h2>
       <div class="tiles" id="tiles"></div>
     </section>
+    <section id="group" hidden>
+      <div class="jhead"><h2 id="groupTitle"></h2></div>
+      <div class="big3" id="groupBig" style="margin-top:12px"></div>
+      <h2 class="sec-title" style="margin-top:16px">区分を選ぶ</h2>
+      <div class="tiles" id="groupTiles"></div>
+    </section>
     <section id="jobs" hidden>
-      <div class="jhead"><button class="btn" id="btnBack" type="button">← お客さん一覧にもどる</button><h2 id="jobsTitle"></h2></div>
+      <div class="jhead"><h2 id="jobsTitle"></h2></div>
       <div class="big3" id="jobsBig" style="margin-top:12px"></div>
       <div class="tools" style="margin-top:12px">
         <div class="seg" id="seg"></div><div class="sp"></div>
@@ -103,7 +109,11 @@ function showApp(me) {
       </div>
       <div class="list" id="list" style="margin-top:12px"></div>
     </section>`;
-  $("#btnBack").addEventListener("click", () => { compF = null; $("#jobs").hidden = true; $("#home").hidden = false; renderAll(); scrollTo({ top: 0 }); });
+  // もどるボタンは上の帯（スクロールしても見える。11/5 持ち主：スマホでボタンが流れてしまうため）
+  $("#topBack").addEventListener("click", () => {
+    if (compF) { compF = null; show(groupF ? "group" : "home"); }
+    else { groupF = null; show("home"); }
+  });
   $("#q").addEventListener("input", e => { q = e.target.value; renderList(); });
 
   watchConnected(on => { D.connected = on; renderNotes(); });
@@ -164,7 +174,7 @@ function renderAll() {
   renderPeriod();
   if (!ready()) { $("#homeBig").innerHTML = ""; $("#tiles").innerHTML = '<div class="empty">読んでいます…</div>'; return; }
   LIST = allJobs({ ...opts(), period: PERIOD });
-  if (compF) renderJobs(); else renderHome();
+  if (compF) renderJobs(); else if (groupF) renderGroup(); else renderHome();
   if (panelKey && panelOpen()) openJob(panelKey);
 }
 
@@ -177,19 +187,70 @@ function wireSplit(el) {
   }));
 }
 
+/** 画面を切りかえる（home＝お客さん一覧、group＝まとめの中、jobs＝工事の一覧） */
+function show(which) {
+  for (const id of ["home", "group", "jobs"]) $("#" + id).hidden = id !== which;
+  const back = $("#topBack");
+  back.hidden = which === "home";
+  back.textContent = which === "jobs" && groupF ? `← ${groupF}` : "← お客さん一覧";
+  renderAll();
+  scrollTo({ top: 0 });
+}
+
+/* ---------- お客さんのまとめ ----------
+   名前の最初の5文字が同じお客さんが2つ以上あれば、1つのカードにまとめる（例：「見本ポンプ保全」「見本ポンプ施設」→「見本ポンプ」）。
+   まとめの名前＝その5文字。固定の注番・注番なしはまとめない。11/5 持ち主（ためし） */
+const GROUP_LEN = 5;
+function groupKey(g) {
+  if (!g.code || g.code === "固定") return "";
+  const n = [...String(g.c || "")];
+  return n.length > GROUP_LEN ? n.slice(0, GROUP_LEN).join("") : "";
+}
+/** お客さんごとにまとめたもの [{c, code, items, t, sub:[…] | null}] */
+function companyTiles(list) {
+  const comps = {};
+  for (const x of list) { const c = x.comp.name; (comps[c] = comps[c] || { c, code: x.comp.code, items: [] }).items.push(x); }
+  const byKey = {};
+  for (const g of Object.values(comps)) { const k = groupKey(g); (byKey[k || "\u0000" + g.c] = byKey[k || "\u0000" + g.c] || []).push(g); }
+  const out = [];
+  for (const [k, gs] of Object.entries(byKey)) {
+    if (!k.startsWith("\u0000") && gs.length >= 2) {
+      const items = gs.flatMap(g => g.items);
+      out.push({ c: k, code: "", items, sub: gs.map(g => ({ ...g, t: sumOf(g.items) })).sort((a, b) => (b.t.labor + b.t.mat) - (a.t.labor + a.t.mat)) });
+    } else {
+      for (const g of gs) out.push({ ...g, sub: null });
+    }
+  }
+  return out.map(g => ({ ...g, t: sumOf(g.items) })).sort((a, b) => (b.t.labor + b.t.mat) - (a.t.labor + a.t.mat));
+}
+function tileHTML(g, attr) {
+  return `<button class="tile ${g.items.every(x => x.closed) ? "idle" : ""}" type="button" ${attr}>
+    <div class="tname">${esc(g.c)}${g.code && g.code !== "固定" ? `<span class="code">${esc(g.code)}</span>` : ""}${g.sub ? `<span class="code">${g.sub.length}つの区分</span>` : ""}</div>
+    <div class="trows"><div><span class="lab">工事</span><b class="num">${g.items.length}</b></div>
+      <div><span class="lab">労務費＋材料費</span><b class="num tot">${yen(g.t.labor + g.t.mat)}</b></div>
+      <div><span class="lab">金額まだの注文</span><b class="num">${g.t.noPrice || "–"}</b></div></div></button>`;
+}
+function gotoJobs(c) { compF = c; seg = "open"; q = ""; $("#q").value = ""; show("jobs"); }
+
 function renderHome() {
   $("#homeBig").innerHTML = big3(sumOf(LIST), LIST.length);
   wireSplit($("#homeBig"));
-  const comps = {};
-  for (const x of LIST) { const c = x.comp.name; (comps[c] = comps[c] || { c, code: x.comp.code, items: [] }).items.push(x); }
-  const arr = Object.values(comps).map(g => ({ ...g, t: sumOf(g.items) })).sort((a, b) => (b.t.labor + b.t.mat) - (a.t.labor + a.t.mat));
-  $("#tiles").innerHTML = arr.map(g => `<button class="tile ${g.items.every(x => x.closed) ? "idle" : ""}" type="button" data-c="${esc(g.c)}">
-    <div class="tname">${esc(g.c)}${g.code && g.code !== "固定" ? `<span class="code">${esc(g.code)}</span>` : ""}</div>
-    <div class="trows"><div><span class="lab">工事</span><b class="num">${g.items.length}</b></div>
-      <div><span class="lab">労務費＋材料費</span><b class="num tot">${yen(g.t.labor + g.t.mat)}</b></div>
-      <div><span class="lab">金額まだの注文</span><b class="num">${g.t.noPrice || "–"}</b></div></div></button>`).join("")
+  const arr = companyTiles(LIST);
+  $("#tiles").innerHTML = arr.map(g => tileHTML(g, g.sub ? `data-g="${esc(g.c)}"` : `data-c="${esc(g.c)}"`)).join("")
     || `<div class="empty">${esc(periodText())}の記録はありません</div>`;
-  $$("#tiles .tile").forEach(b => b.addEventListener("click", () => { compF = b.dataset.c; seg = "open"; q = ""; $("#q").value = ""; $("#home").hidden = true; $("#jobs").hidden = false; renderJobs(); scrollTo({ top: 0 }); }));
+  $$("#tiles .tile").forEach(b => b.addEventListener("click", () => {
+    if (b.dataset.g) { groupF = b.dataset.g; show("group"); } else gotoJobs(b.dataset.c);
+  }));
+}
+
+function renderGroup() {
+  const g = companyTiles(LIST).find(x => x.sub && x.c === groupF);
+  if (!g) { groupF = null; show("home"); return; }
+  $("#groupTitle").textContent = `${g.c}（${periodText()}）`;
+  $("#groupBig").innerHTML = big3(g.t, g.items.length);
+  wireSplit($("#groupBig"));
+  $("#groupTiles").innerHTML = g.sub.map(x => tileHTML(x, `data-c="${esc(x.c)}"`)).join("");
+  $$("#groupTiles .tile").forEach(b => b.addEventListener("click", () => gotoJobs(b.dataset.c)));
 }
 
 function renderJobs() {
