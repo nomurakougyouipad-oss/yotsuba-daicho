@@ -148,6 +148,16 @@ tr.sum td{font-weight:700;border-top:2px solid var(--line)}
 
 @media (max-width:760px){
   .big3{grid-template-columns:1fr}
-  .job{grid-template-columns:1fr 1fr 1fr}.job .jname{grid-column:1/-1}
+  .wrap{padding:14px 14px 80px}
+  /* スマホの工事の帯（11/5）：2つずつ。労務費・材料費 → うち工場・うち現場（労務費の内わけ）→ 人工・原価の合計。はみ出さない */
+  .job{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 14px;padding:14px 16px}
+  .job .jname{grid-column:1/-1}
+  .job h3{font-size:18px}
+  .job .cell{min-width:0}
+  .job .cell .v{font-size:22px;white-space:nowrap}
+  .job .cell .v.dim{font-size:18px}
+  .job .c-labor{order:1} .job .c-mat{order:2} .job .c-kojo{order:3} .job .c-genba{order:4} .job .c-nk{order:5} .job .c-total{order:6}
+  .job .c-kojo,.job .c-genba{background:var(--ground);border-radius:6px;padding:4px 10px}
+  .job .c-total .v{font-size:24px}
   .top h1 small{display:none}
 }

@@ -213,12 +213,12 @@ function renderList() {
     .sort((a, b) => b.s.total - a.s.total);
   $("#list").innerHTML = rows.map(x => `<button class="job ${x.closed ? "closed" : ""} ${x.free ? "free" : ""}" type="button" data-k="${esc(x.key)}">
     <div class="jname"><h3>${esc(x.name)}</h3><div class="meta">${x.no ? `<span>注番 <b>${esc(x.no)}</b></span>` : '<span class="chip free">注番なし</span>'}${x.owner ? `<span>担当 ${esc(x.owner)}</span>` : ""}${x.closed ? '<span class="chip end">おわった</span>' : ""}${!x.free && !x.inNippo ? '<span class="chip free">日報の注番にない</span>' : ""}<span>最後 ${esc(mdText(x.s.last))}</span></div></div>
-    <div class="cell"><div class="lab">人工</div><div class="v num">${nk(x.s.ninku)}</div></div>
-    <div class="cell"><div class="lab">労務費</div><div class="v num">${yen(x.s.labor)}<small>円</small></div>${x.s.lp["その他"] ? `<div class="sub">うち その他 ${yen(x.s.lp["その他"])}円</div>` : ""}</div>
-    <div class="cell"><div class="lab">うち 工場</div><div class="v num dim">${yen(x.s.lp["工場"])}<small>円</small></div></div>
-    <div class="cell"><div class="lab">うち 現場</div><div class="v num dim">${yen(x.s.lp["現場"])}<small>円</small></div></div>
-    <div class="cell"><div class="lab">材料費</div><div class="v num">${yen(x.s.mat)}<small>円</small></div>${x.s.noPrice ? `<div class="sub warn">金額まだ ${x.s.noPrice}件</div>` : ""}</div>
-    <div class="cell"><div class="lab">原価の合計</div><div class="v num tot">${yen(x.s.total)}<small>円</small></div></div></button>`).join("")
+    <div class="cell c-nk"><div class="lab">人工</div><div class="v num">${nk(x.s.ninku)}</div></div>
+    <div class="cell c-labor"><div class="lab">労務費</div><div class="v num">${yen(x.s.labor)}<small>円</small></div>${x.s.lp["その他"] ? `<div class="sub">うち その他 ${yen(x.s.lp["その他"])}円</div>` : ""}</div>
+    <div class="cell c-kojo"><div class="lab">うち 工場</div><div class="v num dim">${yen(x.s.lp["工場"])}<small>円</small></div></div>
+    <div class="cell c-genba"><div class="lab">うち 現場</div><div class="v num dim">${yen(x.s.lp["現場"])}<small>円</small></div></div>
+    <div class="cell c-mat"><div class="lab">材料費</div><div class="v num">${yen(x.s.mat)}<small>円</small></div>${x.s.noPrice ? `<div class="sub warn">金額まだ ${x.s.noPrice}件</div>` : ""}</div>
+    <div class="cell c-total"><div class="lab">原価の合計</div><div class="v num tot">${yen(x.s.total)}<small>円</small></div></div></button>`).join("")
     || '<div class="empty">この条件の工事はありません</div>';
   $$("#list .job").forEach(b => b.addEventListener("click", () => { panelMonth = "all"; openJob(b.dataset.k); }));
 }
