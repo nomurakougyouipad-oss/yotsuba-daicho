@@ -151,8 +151,12 @@ tr.sum td{font-weight:700;border-top:2px solid var(--line)}
   .top-in{padding:10px 12px;gap:8px}
   .top h1{font-size:20px}
   .top .bar{height:28px;width:10px}
+  /* 期のボタン（今期・工事の全期間・期と月をえらぶ）は、上の帯のいちばん下の1行に。えらぶ欄はのこりのはばいっぱい（11/5 決算期） */
+  .period{order:10;flex:1 1 100%}
+  /* 「← もどる」が出ているあいだは、スマホでは題（よつば台帳）を出さない（上の帯を2段にそろえる。11/5 持ち主 B） */
+  .top-in .back:not([hidden]) + h1{display:none}
   .period .tab{padding:8px 10px;font-size:14px}
-  .period select{max-width:112px;font-size:14px;padding:8px 6px}
+  .period select{flex:1;min-width:0;font-size:14px;padding:8px 6px}
   #btnSettei{padding:8px 10px;font-size:14px}
   .theme-btn{width:44px;height:44px}
   .big3{grid-template-columns:1fr}

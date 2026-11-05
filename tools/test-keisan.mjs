@@ -1,6 +1,6 @@
 // 計算のたしかめ（ブラウザも Firebase もいらない）：node tools/test-keisan.mjs
 // 「OK」が並べばよい。「NG」が出たら js/keisan.js を直す
-import { KINDS, PLACES, placeOf, laborByPlace, rateTable, rateFor, net, ninku, laborOf, groupOf, cost, orderDate, jobStats, allJobs, sumOf, companyOf, monthsOf } from "../js/keisan.js";
+import { KINDS, PLACES, placeOf, laborByPlace, fiscalYearOf, fyInfo, inPeriod, fiscalYearsOf, rateTable, rateFor, net, ninku, laborOf, groupOf, cost, orderDate, jobStats, allJobs, sumOf, companyOf, monthsOf } from "../js/keisan.js";
 
 let bad = 0;
 const eq = (name, got, want) => {
@@ -107,6 +107,21 @@ eq("設計・事務所・倉庫番・その他・空はその他", [placeOf({ ku
   const s2 = jobStats(rows2, [], "all", { workers: new Map(), rates: rateTable(null), matDate: "ordered" });
   eq("工事の工場・現場・その他", s2.lp, { 工場: 30000, 現場: 40000, その他: 2500 });
   eq("工場＋現場＋その他＝労務費の合計", PLACES.reduce((a, g) => a + s2.lp[g], 0), s2.labor);
+}
+
+// 10) 決算期（10月決算：11月〜翌年10月）
+eq("2026-10-31 は 2026年10月期", fiscalYearOf("2026-10-31", 10), 2026);
+eq("2026-11-01 は 2027年10月期", fiscalYearOf("2026-11-01", 10), 2027);
+eq("期のはじめ・おわり", fyInfo("fy:2026", 10), { y: 2026, label: "2026年10月期", from: "2025-11", to: "2026-10" });
+eq("12月決算なら 1月〜12月", fyInfo("fy:2026", 12), { y: 2026, label: "2026年12月期", from: "2026-01", to: "2026-12" });
+eq("fy の inPeriod", [inPeriod("2026-10-15", "fy:2026", 10), inPeriod("2026-11-02", "fy:2026", 10), inPeriod("2026-11-02", "fy:2027", 10)], [true, false, true]);
+eq("記録のある期（新しい順）", fiscalYearsOf([{ d: "2026-08-01" }, { d: "2026-11-02" }], [], "ordered", 10), ["fy:2027", "fy:2026"]);
+{
+  const rowsF = [{ d: "2026-10-30", n: "見本A", no: "AA26001", h: { 平日工場: 8 } }, { d: "2026-11-02", n: "見本A", no: "AA26001", h: { 平日工場: 8 } }];
+  const o = { workers: new Map(), rates: rateTable(null), matDate: "ordered", kessanMonth: 10 };
+  eq("前期の分だけ", jobStats(rowsF, [], "fy:2026", o).labor, 20000);
+  eq("今期の分だけ", jobStats(rowsF, [], "fy:2027", o).labor, 20000);
+  eq("全期間", jobStats(rowsF, [], "all", o).labor, 40000);
 }
 
 console.log(bad ? `\nNG が ${bad} こあります` : "\nぜんぶ OK");

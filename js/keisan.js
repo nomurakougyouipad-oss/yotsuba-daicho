@@ -131,11 +131,34 @@ export function ymd(t) {
    period … "all" か "YYYY-MM"
    opts … { workers: Map(名前→{kubun,shozoku}), rates: table, matDate } */
 export const keyOf = r => (r.no ? String(r.no) : "free:" + String(r.j || ""));
-export const inPeriod = (d, period) => period === "all" || String(d).slice(0, 7) === period;
+/* ---------- 期間 ----------
+   period … "all"（工事の全期間）・"YYYY-MM"（月）・"fy:YYYY"（決算期。YYYY＝その期がおわる年）
+   決算月（11/5 持ち主：10月）。期＝前の年の11月〜その年の10月。例 fy:2026 ＝ 2025-11〜2026-10
+   決算月は ⚙ 設定（settei.kessanMonth）に入れられるようにしてあるが、ルールに項目を足すまでは 10 のまま */
+export const DEFAULT_KESSAN_MONTH = 10;
+/** 日付 YYYY-MM… → その期がおわる年（決算月が10なら、11月以降は次の年の期） */
+export function fiscalYearOf(d, km = DEFAULT_KESSAN_MONTH) {
+  const y = Number(String(d).slice(0, 4)), m = Number(String(d).slice(5, 7));
+  if (!y || !m) return 0;
+  return m > km ? y + 1 : y;
+}
+/** 期の名前と、はじめ・おわりの月。fyLabel("fy:2026") → { label:"2026年10月期", from:"2025-11", to:"2026-10" } */
+export function fyInfo(period, km = DEFAULT_KESSAN_MONTH) {
+  const y = Number(String(period).replace("fy:", ""));
+  const p = x => String(x).padStart(2, "0");
+  const fromY = km === 12 ? y : y - 1, fromM = km === 12 ? 1 : km + 1;
+  return { y, label: `${y}年${km}月期`, from: `${fromY}-${p(fromM)}`, to: `${y}-${p(km)}` };
+}
+export const inPeriod = (d, period, km = DEFAULT_KESSAN_MONTH) => {
+  if (period === "all") return true;
+  if (String(period).startsWith("fy:")) return fiscalYearOf(d, km) === Number(String(period).slice(3));
+  return String(d).slice(0, 7) === period;
+};
 
 export function jobStats(rows, orders, period, opts) {
-  const rs = rows.filter(r => inPeriod(r.d, period));
-  const os = orders.filter(o => inPeriod(orderDate(o, opts.matDate), period));
+  const km = opts.kessanMonth || DEFAULT_KESSAN_MONTH;
+  const rs = rows.filter(r => inPeriod(r.d, period, km));
+  const os = orders.filter(o => inPeriod(orderDate(o, opts.matDate), period, km));
   const lg = Object.fromEntries(GROUPS.map(g => [g, 0]));
   const lp = Object.fromEntries(PLACES.map(g => [g, 0]));
   let hours = 0, nk = 0;
@@ -178,7 +201,7 @@ export function koteiName(no, kotei) {
 /** 工事の一覧を作る（日報にある・注文がある工事ぜんぶ）
    jobs … Map(注番 → {name, owner, closed, fixed})（日報の master/jobs）
    返り値 [{key, no, name, owner, closed, free, comp, s}] */
-export function allJobs({ rows, orders, jobs, period, kaisha, kotei, workers, rates, matDate }) {
+export function allJobs({ rows, orders, jobs, period, kaisha, kotei, workers, rates, matDate, kessanMonth }) {
   const byKey = new Map();
   for (const r of rows) { const k = keyOf(r); (byKey.get(k) || byKey.set(k, { rows: [], ords: [] }).get(k)).rows.push(r); }
   for (const o of orders) { const k = String(o.chuban || ""); if (!k) continue; (byKey.get(k) || byKey.set(k, { rows: [], ords: [] }).get(k)).ords.push(o); }
@@ -187,7 +210,7 @@ export function allJobs({ rows, orders, jobs, period, kaisha, kotei, workers, ra
     const free = key.startsWith("free:");
     const no = free ? "" : key;
     const j = jobs && jobs.get(no);
-    const s = jobStats(v.rows, v.ords, period, { workers, rates, matDate });
+    const s = jobStats(v.rows, v.ords, period, { workers, rates, matDate, kessanMonth });
     if (!s.rows.length && !s.ords.length) continue;
     const kn = koteiName(no, kotei);
     const name = free ? key.slice(5) : (j && j.name) || kn || (v.ords[0] && v.ords[0].kenmei) || (v.rows[0] && v.rows[0].j) || "（日報の注番にない）";
@@ -205,6 +228,14 @@ export function sumOf(list) {
     for (const g of PLACES) t.lp[g] += x.s.lp[g];
   }
   return t;
+}
+
+/** 記録のある期（新しい順）["fy:2027","fy:2026"…] */
+export function fiscalYearsOf(rows, orders, matDate, km = DEFAULT_KESSAN_MONTH) {
+  const s = new Set();
+  for (const r of rows) { const y = fiscalYearOf(r.d, km); if (y) s.add(y); }
+  for (const o of orders) { const y = fiscalYearOf(orderDate(o, matDate), km); if (y) s.add(y); }
+  return [...s].sort((a, b) => b - a).map(y => "fy:" + y);
 }
 
 /** 記録のある月（新しい順） */

@@ -35,6 +35,7 @@
       ".read": "auth != null && auth.token.dc_role == 'office' && root.child('daicho/devices/' + auth.uid + '/role').val() == 'office'",
       ".write": "auth != null && auth.token.dc_role == 'office' && root.child('daicho/devices/' + auth.uid + '/role').val() == 'office'",
       "matDate": { ".validate": "newData.val() == 'ordered' || newData.val() == 'arrived' || newData.val() == 'billed'" },
+      "kessanMonth": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 12" },
       "$other": { ".validate": false }
     }
   }

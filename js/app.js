@@ -5,7 +5,7 @@ import { whoAmI, register, errorText } from "./touroku.js";
 import { watchConnected } from "./firebase.js";
 import { watchNippo } from "./nippo.js";
 import { watchOrders, watchCommon, watchDaicho } from "./zairyo.js";
-import { KINDS, GROUPS, PLACES, rateTable, rateFor, net, laborOf, groupOf, cost, orderDate, allJobs, sumOf, monthsOf, jobStats, companyOf, koteiName } from "./keisan.js";
+import { KINDS, GROUPS, PLACES, DEFAULT_KESSAN_MONTH, fiscalYearOf, fyInfo, fiscalYearsOf, ymd, rateTable, rateFor, net, laborOf, groupOf, cost, orderDate, allJobs, sumOf, monthsOf, jobStats, companyOf, koteiName } from "./keisan.js";
 import { openSettei } from "./settei.js";
 
 initTheme();
@@ -74,7 +74,10 @@ function showCode(me) {
 
 /* ---------- 登録ずみ：原価の画面 ---------- */
 const D = { me: null, nippo: null, orders: null, ordersErr: "", common: null, daicho: null, connected: null };
-let PERIOD = "all";          // "all" か "YYYY-MM"
+// 期間："all"（工事の全期間）・"YYYY-MM"（月）・"fy:YYYY"（決算期）。最初の画面は今期から（11/5 持ち主）。工事のくわしい画面は全期間から
+const KM = () => (D.daicho && D.daicho.settei && Number(D.daicho.settei.kessanMonth)) || DEFAULT_KESSAN_MONTH;
+const thisFY = () => "fy:" + fiscalYearOf(ymd(Date.now()), KM());
+let PERIOD = "fy:" + fiscalYearOf(ymd(Date.now()), DEFAULT_KESSAN_MONTH);
 let compF = null, groupF = null, seg = "open", q = "";
 let panelKey = null, panelMonth = "all";
 // 労務費の箱の内わけ：会社の区分（group）か、工場・現場（place）か。切りかえたら覚える
@@ -128,8 +131,10 @@ const ready = () => D.nippo && D.orders && D.common && D.daicho;
 const opts = () => ({
   rows: D.nippo.rows, orders: D.orders, jobs: D.nippo.jobs, kaisha: D.common.kaisha, kotei: D.common.kotei,
   workers: D.nippo.workers, rates: rateTable(D.daicho.rates), matDate: (D.daicho.settei && D.daicho.settei.matDate) || "ordered",
+  kessanMonth: KM(),
 });
-const periodText = () => (PERIOD === "all" ? "工事の全期間" : `${ymText(PERIOD)}の分`);
+const fyName = p => (p === thisFY() ? "今期" : p === "fy:" + (fyInfo(thisFY(), KM()).y - 1) ? "前期" : fyInfo(p, KM()).label);
+const periodText = () => { if (PERIOD === "all") return "工事の全期間"; if (PERIOD.startsWith("fy:")) { const i = fyInfo(PERIOD, KM()); return `${fyName(PERIOD)} ${ymText(i.from)}〜${ymText(i.to)}`; } return `${ymText(PERIOD)}の分`; };
 
 function renderNotes() {
   const el = $("#notes");
@@ -147,11 +152,19 @@ function renderNotes() {
 
 function renderPeriod() {
   const el = $("#period");
+  const km = KM();
   const months = ready() ? monthsOf(D.nippo.rows, D.orders, opts().matDate) : [];
-  if (PERIOD !== "all" && !months.includes(PERIOD)) PERIOD = "all";
-  el.innerHTML = `<button class="tab ${PERIOD === "all" ? "on" : ""}" type="button" data-p="all">工事の全期間</button>
-    <select id="pm" aria-label="月をえらぶ"><option value="">月をえらぶ…</option>${months.map(m => `<option value="${m}" ${PERIOD === m ? "selected" : ""}>${ymText(m)}</option>`).join("")}</select>`;
-  $("[data-p]", el).addEventListener("click", () => { PERIOD = "all"; renderAll(); });
+  const fys = ready() ? fiscalYearsOf(D.nippo.rows, D.orders, opts().matDate, km) : [];
+  const now = thisFY();
+  if (!fys.includes(now)) fys.unshift(now);
+  if (PERIOD !== "all" && !months.includes(PERIOD) && !fys.includes(PERIOD)) PERIOD = now;
+  const fyOpt = p => { const i = fyInfo(p, km); return `<option value="${p}" ${PERIOD === p ? "selected" : ""}>${fyName(p)}（${ymText(i.from)}〜${ymText(i.to)}）</option>`; };
+  el.innerHTML = `<button class="tab ${PERIOD === now ? "on" : ""}" type="button" data-p="${now}">今期</button>
+    <button class="tab ${PERIOD === "all" ? "on" : ""}" type="button" data-p="all">工事の全期間</button>
+    <select id="pm" aria-label="期や月をえらぶ"><option value="">期・月をえらぶ…</option>
+      <optgroup label="決算期（${km}月決算）">${fys.map(fyOpt).join("")}</optgroup>
+      <optgroup label="月">${months.map(m => `<option value="${m}" ${PERIOD === m ? "selected" : ""}>${ymText(m)}</option>`).join("")}</optgroup></select>`;
+  $$("[data-p]", el).forEach(b => b.addEventListener("click", () => { PERIOD = b.dataset.p; renderAll(); }));
   $("#pm").addEventListener("change", e => { if (e.target.value) { PERIOD = e.target.value; renderAll(); } });
 }
 
