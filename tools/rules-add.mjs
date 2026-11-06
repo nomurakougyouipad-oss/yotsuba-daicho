@@ -41,6 +41,7 @@ const gone = [], changed = [];
 function walk(a, b, path) {
   for (const k of Object.keys(a)) {
     const p = path + "/" + k;
+    if (p === "/rules/daicho") continue;   // 台帳の分は、まるごと入れかえる（資材便の分ではない）
     if (!(k in b)) { gone.push(p); continue; }
     if (typeof a[k] === "object" && a[k] !== null) {
       if (typeof b[k] !== "object" || b[k] === null) { changed.push(p); continue; }
@@ -54,6 +55,7 @@ walk(before, after, "");
 const okChanged = changed.every(p => p === "/rules/zairyo/orders/.read" || p === "/rules/common/.read");
 const added = Object.keys(R).filter(k => !(k in before.rules));
 const okAdded = added.every(k => k === "daicho");
+const daichoSame = JSON.stringify(before.rules.daicho || null) === JSON.stringify(R.daicho);
 for (const p of changed) {
   const b = String(getPath(before, p)), a = String(getPath(after, p));
   if (!a.startsWith("(" + b + ")")) { console.log(`${p} は、前の中身をそのまま含んでいません → 書きこみません`); process.exit(1); }
@@ -64,6 +66,7 @@ console.log("=== くらべた結果 ===");
 console.log(`消えた所：${gone.length}`);
 console.log(`変わった所：${changed.length}（${changed.join("・") || "なし"}）`);
 console.log(`足した所：${added.length}（${added.join("・") || "なし"}）`);
+console.log(`台帳の分（/daicho）：${"daicho" in before.rules ? (daichoSame ? "前と同じ" : "入れかえる（中身が変わる。台帳の分だけ）") : "新しく足す"}`);
 console.log("");
 for (const c of changes) console.log("・" + c);
 if (gone.length || !okChanged || !okAdded) {

@@ -2,11 +2,12 @@
 // 登録していない → 台帳の合言葉＋このパソコンの名前 → 登録ずみの画面（最初の画面・工事の一覧・くわしく・⚙ 設定）
 import { $, $$, esc, yen, hrs, nk, mdText, ymText, initTheme, initPanel, openPanel, closePanel, panelOpen, toast } from "./common.js";
 import { whoAmI, register, errorText } from "./touroku.js";
-import { watchConnected } from "./firebase.js";
+import { ref, set, update, push, remove } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
+import { db, watchConnected } from "./firebase.js";
 import { watchNippo } from "./nippo.js";
 import { watchOrders, watchCommon, watchDaicho } from "./zairyo.js";
 import { KINDS, GROUPS, PLACES, DEFAULT_KESSAN_MONTH, fiscalYearOf, fyInfo, fiscalYearsOf, cutInfo, cutMonthsOf, URI_CATS, DEFAULT_URI, uriHours, uriYen, ymd, rateTable, rateFor, net, laborOf, groupOf, cost, orderDate, allJobs, sumOf, monthsOf, jobStats, companyOf, koteiName } from "./keisan.js";
-import { openSettei } from "./settei.js";
+import { openSettei, repaintSettei } from "./settei.js";
 
 initTheme();
 initPanel();
@@ -80,43 +81,51 @@ const thisFY = () => "fy:" + fiscalYearOf(ymd(Date.now()), KM());
 let PERIOD = "fy:" + fiscalYearOf(ymd(Date.now()), DEFAULT_KESSAN_MONTH);
 let compF = null, groupF = null, seg = "open", q = "";
 let panelKey = null, panelMonth = "all";
-// 締め日（お客さんへの請求用。このブラウザで覚える。はじめは20日）
-let CUT = 20;
-try { const v = Number(localStorage.getItem("daicho-cutday")); if (v >= 1 && v <= 28) CUT = v; } catch (err) { }
-export const getCut = () => CUT;
-export function setCut(v) { CUT = v; try { localStorage.setItem("daicho-cutday", String(v)); } catch (err) { } PERIOD = PERIOD.startsWith("cut:") ? thisFY() : PERIOD; panelMonth = "all"; renderAll(); }
-// 注番なしの件名 → お客さん（このブラウザで覚える。次のルールの更新で /daicho/freeMap に移す）
-let FREEMAP = {};
-try { FREEMAP = JSON.parse(localStorage.getItem("daicho-freemap") || "{}") || {}; } catch (err) { FREEMAP = {}; }
-function setFreeMap(name, to) {
-  if (to) FREEMAP[name] = to; else delete FREEMAP[name];
-  try { localStorage.setItem("daicho-freemap", JSON.stringify(FREEMAP)); } catch (err) { }
+/* ---------- 設定（全部の端末で同じ。Firebase の /daicho/settei・/daicho/freeMap・/daicho/groups。11/6） ----------
+   締め日（cutDay）・お客さんに送る表の単価（uri）・注番なしの件名→お客さん（freeMap）・お客さんのまとめ（groups） */
+const SET = () => (D.daicho && D.daicho.settei) || {};
+const getCutV = () => { const v = Number(SET().cutDay); return v >= 1 && v <= 28 ? v : 20; };
+export const getCut = getCutV;
+export function setCut(v) {
+  update(ref(db, "daicho/settei"), { cutDay: Number(v) }).catch(err => toast(errorText(err)));
+  if (PERIOD.startsWith("cut:")) PERIOD = thisFY();
+  panelMonth = "all";
 }
-// お客さんに送る表の単価（売り。このブラウザで覚える。はじめは お客さんの常用の請求と同じ）
-let URI = { ...DEFAULT_URI };
-try { const v = JSON.parse(localStorage.getItem("daicho-uri") || "null"); if (v && typeof v === "object") URI = { ...DEFAULT_URI, ...v }; } catch (err) { }
-// お客さんのまとめ（持ち主が決めた分。頭2文字 → まとめの名前。このブラウザで覚える。11/6 持ち主：頭文字のちがうお客さんも、同じまとめのカードに入れたい）
-let GMAP = {};
-try { GMAP = JSON.parse(localStorage.getItem("daicho-groups") || "{}") || {}; } catch (err) { GMAP = {}; }
-let GNAMES = [];
-try { GNAMES = JSON.parse(localStorage.getItem("daicho-groupnames") || "[]") || []; } catch (err) { GNAMES = []; }
-export function addGroupName(name) { if (!GNAMES.includes(name)) GNAMES.push(name); try { localStorage.setItem("daicho-groupnames", JSON.stringify(GNAMES)); } catch (err) { } }
-export const getGroupMap = () => ({ ...GMAP });
+export const getUri = () => ({ ...DEFAULT_URI, ...((SET().uri) || {}) });
+export function setUri(v) { update(ref(db, "daicho/settei"), { uri: { ...DEFAULT_URI, ...v } }).catch(err => toast(errorText(err))); }
+/** 注番なしの件名 → お客さん */
+function freeMapOf() {
+  const out = {};
+  for (const e of Object.values((D.daicho && D.daicho.freeMap) || {})) if (e && e.name && e.to) out[e.name] = e.to;
+  return out;
+}
+function setFreeMap(name, to) {
+  const fm = (D.daicho && D.daicho.freeMap) || {};
+  const hit = Object.entries(fm).find(([, e]) => e && e.name === name);
+  const p = hit ? ref(db, "daicho/freeMap/" + hit[0]) : push(ref(db, "daicho/freeMap"));
+  (to ? set(p, { name, to }) : hit ? remove(p) : Promise.resolve()).catch(err => toast(errorText(err)));
+}
+/** お客さんのまとめ */
+const gmapOf = () => ((D.daicho && D.daicho.groups && D.daicho.groups.map) || {});
+const gnamesOf = () => Object.keys((D.daicho && D.daicho.groups && D.daicho.groups.names) || {});
+export const getGroupMap = () => ({ ...gmapOf() });
 export function setGroupMap(code, to) {
-  if (to) GMAP[code] = to; else delete GMAP[code];
-  try { localStorage.setItem("daicho-groups", JSON.stringify(GMAP)); } catch (err) { }
-  renderAll();
+  (to ? set(ref(db, "daicho/groups/map/" + code), to) : remove(ref(db, "daicho/groups/map/" + code))).catch(err => toast(errorText(err)));
+}
+/** まとめの名前を足す。Firebase の名前に使えない字（. # $ [ ] /）があれば足さずに false */
+export function addGroupName(name) {
+  if (/[.#$\[\]\/]/.test(name)) { toast("まとめの名前に . # $ [ ] / は使えません"); return false; }
+  set(ref(db, "daicho/groups/names/" + name), true).catch(err => toast(errorText(err)));
+  return true;
 }
 /** 今ある会社（頭2文字と名前）と、まとめの名前の一覧（⚙ 設定で使う） */
 export function groupChoices() {
   const comps = new Map();
   for (const x of LIST) if (x.comp.code && x.comp.code !== "固定" && x.comp.code !== "map") comps.set(x.comp.code, x.comp.name);
-  const groups = new Set([...GNAMES, ...Object.values(GMAP)]);
+  const groups = new Set([...gnamesOf(), ...Object.values(gmapOf())]);
   for (const g of companyTiles(LIST)) if (g.sub) groups.add(g.c);
   return { comps: [...comps].sort((a, b) => a[1].localeCompare(b[1], "ja")), groups: [...groups].sort((a, b) => a.localeCompare(b, "ja")) };
 }
-export const getUri = () => ({ ...URI });
-export function setUri(v) { URI = { ...DEFAULT_URI, ...v }; try { localStorage.setItem("daicho-uri", JSON.stringify(URI)); } catch (err) { } }
 const cutText = p => { const i = cutInfo(p); return `${i.label}（${+i.ym.slice(5)}月${i.cutDay}日締め）`; };
 // 労務費の箱の内わけ：会社の区分（group）か、工場・現場（place）か。切りかえたら覚える
 let SPLIT = "group";
@@ -163,7 +172,7 @@ function showApp(me) {
   watchNippo(v => { D.nippo = v; renderAll(); }, err => { D.nippoErr = String((err && err.message) || err); renderNotes(); });
   watchOrders(v => { D.orders = v; D.ordersErr = ""; renderAll(); }, err => { D.orders = D.orders || []; D.ordersErr = /permission/i.test(String(err && err.message)) ? "perm" : String((err && err.message) || err); renderAll(); });
   watchCommon(v => { D.common = v; renderAll(); }, err => { D.common = D.common || { kaisha: {}, kotei: {} }; D.commonErr = /permission/i.test(String(err && err.message)) ? "perm" : String((err && err.message) || err); renderAll(); });
-  watchDaicho(v => { D.daicho = v; renderAll(); }, err => { D.daicho = D.daicho || { rates: {}, settei: {} }; D.daichoErr = String((err && err.message) || err); renderAll(); });
+  watchDaicho(v => { D.daicho = v; renderAll(); repaintSettei(D); }, err => { D.daicho = D.daicho || { rates: {}, settei: {}, freeMap: {}, groups: {} }; D.daichoErr = String((err && err.message) || err); renderAll(); });
   renderAll();
 }
 
@@ -171,7 +180,7 @@ const ready = () => D.nippo && D.orders && D.common && D.daicho;
 const opts = () => ({
   rows: D.nippo.rows, orders: D.orders, jobs: D.nippo.jobs, kaisha: D.common.kaisha, kotei: D.common.kotei,
   workers: D.nippo.workers, rates: rateTable(D.daicho.rates), matDate: (D.daicho.settei && D.daicho.settei.matDate) || "ordered",
-  kessanMonth: KM(), freeMap: FREEMAP,
+  kessanMonth: KM(), freeMap: freeMapOf(),
 });
 const fyName = p => (p === thisFY() ? "今期" : p === "fy:" + (fyInfo(thisFY(), KM()).y - 1) ? "前期" : fyInfo(p, KM()).label);
 const periodText = () => { if (PERIOD === "all") return "工事の全期間"; if (PERIOD.startsWith("fy:")) { const i = fyInfo(PERIOD, KM()); return `${fyName(PERIOD)} ${ymText(i.from)}〜${ymText(i.to)}`; } if (PERIOD.startsWith("cut:")) return cutText(PERIOD); return `${ymText(PERIOD)}の分`; };
@@ -195,7 +204,7 @@ function renderPeriod() {
   const km = KM();
   const months = ready() ? monthsOf(D.nippo.rows, D.orders, opts().matDate) : [];
   const fys = ready() ? fiscalYearsOf(D.nippo.rows, D.orders, opts().matDate, km) : [];
-  const cuts = ready() ? cutMonthsOf(D.nippo.rows, D.orders, opts().matDate, CUT) : [];
+  const cuts = ready() ? cutMonthsOf(D.nippo.rows, D.orders, opts().matDate, getCutV()) : [];
   const now = thisFY();
   if (!fys.includes(now)) fys.unshift(now);
   if (PERIOD !== "all" && !months.includes(PERIOD) && !fys.includes(PERIOD) && !cuts.includes(PERIOD)) PERIOD = now;
@@ -205,7 +214,7 @@ function renderPeriod() {
     <select id="pm" aria-label="期や月をえらぶ"><option value="">期・月をえらぶ…</option>
       <optgroup label="決算期（${km}月決算）">${fys.map(fyOpt).join("")}</optgroup>
       <optgroup label="月">${months.map(m => `<option value="${m}" ${PERIOD === m ? "selected" : ""}>${ymText(m)}</option>`).join("")}</optgroup>
-      <optgroup label="${CUT}日締め（お客さんへの請求用。締め日は ⚙ 設定）">${cuts.map(c => `<option value="${c}" ${PERIOD === c ? "selected" : ""}>${cutText(c)}</option>`).join("")}</optgroup></select>`;
+      <optgroup label="${getCutV()}日締め（お客さんへの請求用。締め日は ⚙ 設定）">${cuts.map(c => `<option value="${c}" ${PERIOD === c ? "selected" : ""}>${cutText(c)}</option>`).join("")}</optgroup></select>`;
   $$("[data-p]", el).forEach(b => b.addEventListener("click", () => { PERIOD = b.dataset.p; renderAll(); }));
   $("#pm").addEventListener("change", e => { if (e.target.value) { PERIOD = e.target.value; renderAll(); } });
 }
@@ -259,7 +268,8 @@ const GROUP_LEN = 5;
 function groupKey(g) {
   if (g.code === "map") return String(g.c || "");   // 注番なしから割りあてた分：同じ名前のまとめ（か会社）に入る
   if (!g.code || g.code === "固定") return "";
-  if (GMAP[g.code]) return GMAP[g.code];            // 持ち主が決めたまとめが先
+  const gm = gmapOf();
+  if (gm[g.code]) return gm[g.code];                // 持ち主が決めたまとめが先
   const n = [...String(g.c || "")];
   return n.length > GROUP_LEN ? n.slice(0, GROUP_LEN).join("") : "";
 }
@@ -329,7 +339,7 @@ function mapTargets() {
   const names = new Set();
   for (const x of LIST) if (!x.free && x.comp.code && x.comp.code !== "固定") names.add(x.comp.name);
   for (const g of companyTiles(LIST)) if (g.sub) names.add(g.c);
-  for (const v of Object.values(FREEMAP)) names.add(v);
+  for (const v of Object.values(freeMapOf())) names.add(v);
   return [...names].sort((a, b) => a.localeCompare(b, "ja"));
 }
 function renderList() {
@@ -366,7 +376,7 @@ function openJob(key) {
   const rowsAll = o.rows.filter(r => (r.no ? r.no : "free:" + (r.j || "")) === key);
   const ordsAll = o.orders.filter(x => x.chuban === key);
   const ms = monthsOf(rowsAll, ordsAll, o.matDate).sort();
-  const cs = cutMonthsOf(rowsAll, ordsAll, o.matDate, CUT).sort();
+  const cs = cutMonthsOf(rowsAll, ordsAll, o.matDate, getCutV()).sort();
   if (panelMonth !== "all" && !ms.includes(panelMonth) && !cs.includes(panelMonth)) panelMonth = "all";
   const s = jobStats(rowsAll, ordsAll, panelMonth, o);
   const j = o.jobs.get(no);
@@ -390,7 +400,7 @@ function openJob(key) {
    <div class="p-head"><div class="row"><span class="num muted">${esc(no || "注番なし")}</span><span class="muted" style="font-size:14px">${esc(comp.name)}</span><div class="sp"></div><button class="btn" type="button" data-close>✕ とじる</button></div>
      <h2>${esc(name)}</h2>
      <div class="months"><button type="button" data-m="all" class="${panelMonth === "all" ? "on" : ""}">工事の全期間</button>${ms.map(m => `<button type="button" data-m="${m}" class="${panelMonth === m ? "on" : ""}">${ymText(m)}</button>`).join("")}</div>
-     <div class="months cutrow"><span class="hint">${CUT}日締め</span>${cs.map(c => `<button type="button" data-m="${c}" class="${panelMonth === c ? "on" : ""}">${cutInfo(c).label}</button>`).join("")}</div></div>
+     <div class="months cutrow"><span class="hint">${getCutV()}日締め</span>${cs.map(c => `<button type="button" data-m="${c}" class="${panelMonth === c ? "on" : ""}">${cutInfo(c).label}</button>`).join("")}</div></div>
    <div class="p-body">
     <div class="sec"><div class="big3">
       <div class="big labor"><div class="lab">労務費</div><div class="val num" style="font-size:26px">${yen(s.labor)}<small>円</small></div><div class="lab">${nk(s.ninku)} 人工・${hrs(s.hours)} 時間</div></div>
@@ -454,7 +464,7 @@ function exportExcel(list, title) {
   for (const x of [...list].sort((a, b) => b.s.labor - a.s.labor)) {
     const h = uriHours(x.s.rows);
     if (!cats.some(c => h[c])) continue;
-    const y = uriYen(h, URI);
+    const y = uriYen(h, getUri());
     rows0.push([x.name, x.no, ...cats.map(c => h[c] || ""), y]);
     for (const c of cats) tot0[c] += h[c];
     totYen += y;
@@ -462,7 +472,7 @@ function exportExcel(list, title) {
   rows0.push([]);
   rows0.push(["合計", "", ...cats.map(c => Math.round(tot0[c] * 10) / 10), totYen]);
   rows0.push([]);
-  rows0.push(["単価（1時間）", "", ...cats.map(c => URI[c]), ""]);
+  rows0.push(["単価（1時間）", "", ...cats.map(c => getUri()[c]), ""]);
   const wb = X.utils.book_new();
   const note = [[`よつば台帳 ${title}`, periodText(), `出した日 ${ymd(Date.now())}`], []];
   const ws0 = X.utils.aoa_to_sheet([...note, ["工事名称", "注番", ...cats.map(c => c + "（時間）"), "金額（税抜）"], ...rows0]);

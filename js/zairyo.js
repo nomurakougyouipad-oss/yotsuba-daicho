@@ -25,11 +25,13 @@ export function watchCommon(cb, onErr) {
   }, onErr);
 }
 
-/** 台帳の自分のデータ（/daicho/rates・/daicho/settei）を見張る。cb({ rates, settei }) */
+/** 台帳の自分のデータを見張る。cb({ rates, settei, freeMap, groups })
+ *  settei … { matDate, kessanMonth, cutDay, uri:{区分:円} }（11/6 全部の端末で同じにするため Firebase に移した）
+ *  freeMap … { id: { name:注番なしの件名, to:お客さん } }
+ *  groups … { map:{頭2文字: まとめの名前}, names:{まとめの名前: true} } */
 export function watchDaicho(cb, onErr) {
-  let rates = null, settei = null;
-  const emit = () => { if (rates !== null && settei !== null) cb({ rates, settei }); };
-  const o1 = onValue(ref(db, "daicho/rates"), s => { rates = s.val() || {}; emit(); }, onErr);
-  const o2 = onValue(ref(db, "daicho/settei"), s => { settei = s.val() || {}; emit(); }, onErr);
-  return () => { o1(); o2(); };
+  const v = { rates: null, settei: null, freeMap: null, groups: null };
+  const emit = () => { if (Object.values(v).every(x => x !== null)) cb({ ...v }); };
+  const offs = ["rates", "settei", "freeMap", "groups"].map(k => onValue(ref(db, "daicho/" + k), s => { v[k] = s.val() || {}; emit(); }, onErr));
+  return () => offs.forEach(f => f());
 }

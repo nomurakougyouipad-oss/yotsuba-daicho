@@ -2,14 +2,21 @@
 // 台帳は自分の所（/daicho/…）にだけ書く。日報・資材便には書かない
 import { ref, get, set, update } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
 import { db, call } from "./firebase.js";
-import { $, $$, esc, yen, openPanel, closePanel, toast } from "./common.js";
+import { $, $$, esc, yen, openPanel, closePanel, setOnPanelClose, toast } from "./common.js";
 import { myUid, errorText } from "./touroku.js";
 import { KINDS, DEFAULT_RATE, DEFAULT_MINUS, URI_CATS, rateTable, fillKinds } from "./keisan.js";
 import { getCut, setCut, getUri, setUri, getGroupMap, setGroupMap, groupChoices, addGroupName } from "./app.js";
 
 let tab = "rate";
+let LAST = null;   // 開いている設定の画面（Firebase の設定が変わったら描きなおす）
+/** 設定の画面が開いていれば、いまの設定で描きなおす（app.js が Firebase の設定を受けとったときに呼ぶ） */
+export function repaintSettei(D) {
+  if (!LAST || !$("#setBody") || document.activeElement && document.activeElement.matches("#setBody input, #setBody select")) return;
+  paint(LAST, D);
+}
 
 export function openSettei(me, D) {
+  LAST = me;
   openPanel(`
     <div class="p-head"><div class="row"><h2>⚙ 設定</h2><div class="sp"></div><button class="btn" type="button" data-close>✕ とじる</button></div>
       <div class="set-tabs" id="setTabs">
@@ -22,6 +29,7 @@ export function openSettei(me, D) {
     $$("#setTabs button", p).forEach(b => b.addEventListener("click", () => { tab = b.dataset.t; paint(me, D); }));
     paint(me, D);
   });
+  setOnPanelClose(() => { LAST = null; });
 }
 
 function paint(me, D) {
@@ -66,13 +74,15 @@ function paintRate(body, me, D) {
       <table><thead><tr><th>お客さん</th><th>入れるカード</th></tr></thead><tbody>
       ${comps.map(([code, name]) => `<tr><td>${esc(name)} <span class="hint">${esc(code)}</span></td><td><select data-g="${esc(code)}"><option value="">（自分のカード）</option>${groups.map(g => `<option value="${esc(g)}" ${gm[code] === g ? "selected" : ""}>${esc(g)}</option>`).join("")}</select></td></tr>`).join("") || '<tr><td colspan="2" class="muted">まだありません</td></tr>'}
       </tbody></table>`; })()}
-      <p class="hint">名前の最初の5文字が同じお客さんは、何もしなくても自動でまとまります。ここで決めた分は、このパソコンだけで覚えます。</p></div>
+      <p class="hint">名前の最初の5文字が同じお客さんは、何もしなくても自動でまとまります。ここで決めた分は、全部の端末で同じになります。</p></div>
     <div class="sec"><h4>締め日（お客さんへの請求用の区切り）</h4>
       <div class="field"><select id="cutSel" style="max-width:220px">${[5, 10, 15, 20, 25].map(d => `<option value="${d}" ${getCut() === d ? "selected" : ""}>${d}日締め（前の月の${d + 1}日〜${d}日）</option>`).join("")}</select></div>
-      <p class="hint">上の「期・月をえらぶ」と、工事のくわしい画面に「${getCut()}日締め」の月が出ます。このパソコンだけの設定です（ほかのパソコンは別々に決めます）。</p></div>
+      <p class="hint">上の「期・月をえらぶ」と、工事のくわしい画面に「${getCut()}日締め」の月が出ます。全部の端末で同じになります。</p></div>
+    <div class="sec"><h4>決算月</h4>
+      <div class="field"><select id="kmSel" style="max-width:220px">${Array.from({ length: 12 }, (_, i) => i + 1).map(m => `<option value="${m}" ${(Number(D.daicho && D.daicho.settei && D.daicho.settei.kessanMonth) || 10) === m ? "selected" : ""}>${m}月決算（${m === 12 ? 1 : m + 1}月〜${m}月）</option>`).join("")}</select></div></div>
     <div class="sec"><h4>お客さんに送る表の単価（売り） <span class="hint">「Excel に出す」の「送る用」の金額に使います。上の労務費（原価）の単価とは別です</span></h4>
       <div class="rates" id="uriRates">${URI_CATS.map(([c, kinds]) => `<label for="u_${c}">${c} <span class="hint">${kinds.join("・")}</span></label><input class="inp num" id="u_${c}" data-u="${c}" inputmode="numeric" value="${getUri()[c]}">`).join("")}</div>
-      <p class="hint">入れたらすぐ覚えます（このパソコンだけ）。ふつうは遅刻・早退を引いた時間です。</p></div>`;
+      <p class="hint">入れたらすぐ覚えます（全部の端末で同じ）。ふつうは遅刻・早退を引いた時間です。</p></div>`;
   $("#rateForm").addEventListener("submit", async e => {
     e.preventDefault();
     const from = $("#rFrom").value, err = $("#rErr"), go = $("#rGo");
@@ -95,15 +105,16 @@ function paintRate(body, me, D) {
     for (const el of $$("#uriRates [data-u]")) { const n = Number(String(el.value).replace(/[^\d]/g, "")); v[el.dataset.u] = Number.isFinite(n) ? n : 0; }
     setUri(v); toast("送る表の単価を覚えました");
   }));
-  $$("[data-g]", body).forEach(sel => sel.addEventListener("change", () => { setGroupMap(sel.dataset.g, sel.value); toast(sel.value ? `${sel.value} のカードに入れました` : "自分のカードにもどしました"); paintRate(body, me, D); }));
+  $$("[data-g]", body).forEach(sel => sel.addEventListener("change", () => { setGroupMap(sel.dataset.g, sel.value); toast(sel.value ? `${sel.value} のカードに入れました` : "自分のカードにもどしました"); }));
   $("#addGroup").addEventListener("click", () => {
     const name = $("#newGroup").value.trim();
     if (!name) { toast("まとめの名前を入れてください"); return; }
-    addGroupName(name);
+    if (!addGroupName(name)) return;
+    $("#newGroup").value = "";
     toast(`「${name}」を作りました。下の表で、入れるお客さんをえらんでください`);
-    paintRate(body, me, D);
   });
-  $("#cutSel").addEventListener("change", e => { setCut(Number(e.target.value)); toast(`${e.target.value}日締めにしました`); paintRate(body, me, D); });
+  $("#cutSel").addEventListener("change", e => { setCut(Number(e.target.value)); toast(`${e.target.value}日締めにしました`); });
+  $("#kmSel").addEventListener("change", async e => { try { await update(ref(db, "daicho/settei"), { kessanMonth: Number(e.target.value) }); toast(`${e.target.value}月決算にしました`); } catch (ex) { toast(errorText(ex)); } });
   $$("#matRadios input").forEach(i => i.addEventListener("change", async () => {
     try { await update(ref(db, "daicho/settei"), { matDate: i.value }); toast("月に分ける日を変えました"); }
     catch (ex) { toast(errorText(ex)); }
@@ -154,7 +165,7 @@ function paintCode(body) {
 }
 
 /* ---------- 今すぐ保存（台帳の自分のデータを、このパソコンにファイルで） ---------- */
-const PATHS = [["daicho/rates", "単価（いつから）"], ["daicho/settei", "設定"], ["daicho/devices", "登録した端末"]];
+const PATHS = [["daicho/rates", "単価（いつから）"], ["daicho/settei", "設定（決算月・締め日・送る表の単価・材料費の月）"], ["daicho/freeMap", "注番なしの割りあて"], ["daicho/groups", "お客さんのまとめ"], ["daicho/devices", "登録した端末"]];
 function paintSave(body, me) {
   body.innerHTML = `
     <div class="sec"><h4>台帳のデータを、このパソコンに保存する</h4>
