@@ -14,8 +14,9 @@
   --bar:#F2A81D; --bar2:#5FB0E8; --bar3:#8A96A3; --bar-soft:#2B353E; --shadow:0 14px 36px rgba(0,0,0,.6); }
 
 *{box-sizing:border-box}[hidden]{display:none!important}
-html{background:var(--ground)}
-body{margin:0;background:var(--ground);color:var(--ink);font-family:"M PLUS 1p","Noto Sans JP",system-ui,sans-serif;font-size:16px;line-height:1.6}
+/* 横のゆれをおさえる。hidden だと上の帯（sticky）がスクロールで流れてしまうので clip（11/6） */
+html{background:var(--ground);overflow-x:clip}
+body{margin:0;overflow-x:clip;background:var(--ground);color:var(--ink);font-family:"M PLUS 1p","Noto Sans JP",system-ui,sans-serif;font-size:16px;line-height:1.6}
 button{font:inherit;color:inherit;cursor:pointer}
 input,select{font:inherit;font-size:16px;color:var(--ink);background:var(--ground);border:1.5px solid var(--line);border-radius:6px;padding:8px 10px;min-height:44px}
 input:focus,select:focus,button:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
@@ -43,7 +44,9 @@ input:focus,select:focus,button:focus-visible{outline:3px solid var(--accent);ou
 .period .tab.on{background:var(--ink);color:var(--ground);border-color:var(--ink)}
 
 /* 中身 */
-.wrap{max-width:1560px;margin:0 auto;padding:18px 20px 80px;display:grid;gap:18px}
+.wrap{max-width:1560px;margin:0 auto;padding:18px 20px 80px;display:grid;gap:18px;grid-template-columns:minmax(0,1fr)}
+.wrap>*,.big,.tile,.job,.cell,.jhead h2{min-width:0}
+.jhead h2{overflow-wrap:anywhere}
 .card{background:var(--surface);border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:8px;padding:18px 20px;display:grid;gap:12px}
 .card h2{margin:0;font-size:20px;font-weight:900}
 .card.narrow-card{max-width:520px;margin:20px auto;width:100%}
@@ -71,7 +74,7 @@ input:focus,select:focus,button:focus-visible{outline:3px solid var(--accent);ou
 .big .val{font-size:36px;line-height:1.1} .big.total .val{color:var(--accent)}
 .big .val small,.v small{font-size:15px;font-family:"M PLUS 1p",sans-serif;font-weight:700;margin-left:3px;color:var(--muted)}
 .split{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:8px;margin-top:6px}
-.split div{background:var(--ground);border-radius:6px;padding:6px 10px;display:grid}
+.split div{background:var(--ground);border-radius:6px;padding:6px 10px;display:grid;min-width:0}
 .split .l{font-size:12px;color:var(--muted);white-space:nowrap}
 .split b{font-size:17px;line-height:1.3;white-space:nowrap}
 .split b small{font-size:12px}
@@ -151,6 +154,13 @@ tr.sum td{font-weight:700;border-top:2px solid var(--line)}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--ground);padding:10px 18px;border-radius:8px;font-weight:700;z-index:30;box-shadow:var(--shadow)}
 
 @media (max-width:760px){
+  /* 左右にゆれないように（11/6 持ち主）：数字の箱が画面よりはみ出さないようにする */
+  .split{gap:6px} .split div{padding:6px 8px}
+  .split .l{white-space:normal;line-height:1.2}
+  .split b{font-size:15px;white-space:normal;overflow-wrap:anywhere}
+  .big .val{font-size:30px;overflow-wrap:anywhere}
+  .tools input[type=search]{min-width:0;width:100%}
+  .tile b{font-size:19px;overflow-wrap:anywhere}
   .top-in{padding:10px 12px;gap:8px}
   .top h1{font-size:20px}
   .top .bar{height:28px;width:10px}
