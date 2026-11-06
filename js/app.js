@@ -95,6 +95,26 @@ function setFreeMap(name, to) {
 // お客さんに送る表の単価（売り。このブラウザで覚える。はじめは お客さんの常用の請求と同じ）
 let URI = { ...DEFAULT_URI };
 try { const v = JSON.parse(localStorage.getItem("daicho-uri") || "null"); if (v && typeof v === "object") URI = { ...DEFAULT_URI, ...v }; } catch (err) { }
+// お客さんのまとめ（持ち主が決めた分。頭2文字 → まとめの名前。このブラウザで覚える。11/6 持ち主：頭文字のちがうお客さんも、同じまとめのカードに入れたい）
+let GMAP = {};
+try { GMAP = JSON.parse(localStorage.getItem("daicho-groups") || "{}") || {}; } catch (err) { GMAP = {}; }
+let GNAMES = [];
+try { GNAMES = JSON.parse(localStorage.getItem("daicho-groupnames") || "[]") || []; } catch (err) { GNAMES = []; }
+export function addGroupName(name) { if (!GNAMES.includes(name)) GNAMES.push(name); try { localStorage.setItem("daicho-groupnames", JSON.stringify(GNAMES)); } catch (err) { } }
+export const getGroupMap = () => ({ ...GMAP });
+export function setGroupMap(code, to) {
+  if (to) GMAP[code] = to; else delete GMAP[code];
+  try { localStorage.setItem("daicho-groups", JSON.stringify(GMAP)); } catch (err) { }
+  renderAll();
+}
+/** 今ある会社（頭2文字と名前）と、まとめの名前の一覧（⚙ 設定で使う） */
+export function groupChoices() {
+  const comps = new Map();
+  for (const x of LIST) if (x.comp.code && x.comp.code !== "固定" && x.comp.code !== "map") comps.set(x.comp.code, x.comp.name);
+  const groups = new Set([...GNAMES, ...Object.values(GMAP)]);
+  for (const g of companyTiles(LIST)) if (g.sub) groups.add(g.c);
+  return { comps: [...comps].sort((a, b) => a[1].localeCompare(b[1], "ja")), groups: [...groups].sort((a, b) => a.localeCompare(b, "ja")) };
+}
 export const getUri = () => ({ ...URI });
 export function setUri(v) { URI = { ...DEFAULT_URI, ...v }; try { localStorage.setItem("daicho-uri", JSON.stringify(URI)); } catch (err) { } }
 const cutText = p => { const i = cutInfo(p); return `${i.label}（${+i.ym.slice(5)}月${i.cutDay}日締め）`; };
@@ -239,6 +259,7 @@ const GROUP_LEN = 5;
 function groupKey(g) {
   if (g.code === "map") return String(g.c || "");   // 注番なしから割りあてた分：同じ名前のまとめ（か会社）に入る
   if (!g.code || g.code === "固定") return "";
+  if (GMAP[g.code]) return GMAP[g.code];            // 持ち主が決めたまとめが先
   const n = [...String(g.c || "")];
   return n.length > GROUP_LEN ? n.slice(0, GROUP_LEN).join("") : "";
 }

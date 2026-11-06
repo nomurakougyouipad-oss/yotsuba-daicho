@@ -5,7 +5,7 @@ import { db, call } from "./firebase.js";
 import { $, $$, esc, yen, openPanel, closePanel, toast } from "./common.js";
 import { myUid, errorText } from "./touroku.js";
 import { KINDS, DEFAULT_RATE, DEFAULT_MINUS, URI_CATS, rateTable, fillKinds } from "./keisan.js";
-import { getCut, setCut, getUri, setUri } from "./app.js";
+import { getCut, setCut, getUri, setUri, getGroupMap, setGroupMap, groupChoices, addGroupName } from "./app.js";
 
 let tab = "rate";
 
@@ -60,6 +60,13 @@ function paintRate(body, me, D) {
         ${[["ordered", "注文した日"], ["arrived", "届いた日（まだなら注文した日）"], ["billed", "請求の日（まだなら届いた日・注文した日）"]].map(([v, l]) => `<label><input type="radio" name="matDate" value="${v}" ${matDate === v ? "checked" : ""}>${l}</label>`).join("")}
       </div>
       <p class="hint">「工事の全期間」には関係ありません。月をえらんだときだけ、どの月に入れるかが変わります。</p></div>
+    <div class="sec"><h4>お客さんのまとめ <span class="hint">最初の画面で、どのカードに入れるか</span></h4>
+      ${(() => { const { comps, groups } = groupChoices(), gm = getGroupMap(); return `
+      <div class="field"><label for="newGroup">新しいまとめの名前</label><div style="display:flex;gap:8px"><input id="newGroup" class="inp" type="text" maxlength="20" placeholder="例：○○グループ" style="max-width:260px"><button class="btn" type="button" id="addGroup">足す</button></div></div>
+      <table><thead><tr><th>お客さん</th><th>入れるカード</th></tr></thead><tbody>
+      ${comps.map(([code, name]) => `<tr><td>${esc(name)} <span class="hint">${esc(code)}</span></td><td><select data-g="${esc(code)}"><option value="">（自分のカード）</option>${groups.map(g => `<option value="${esc(g)}" ${gm[code] === g ? "selected" : ""}>${esc(g)}</option>`).join("")}</select></td></tr>`).join("") || '<tr><td colspan="2" class="muted">まだありません</td></tr>'}
+      </tbody></table>`; })()}
+      <p class="hint">名前の最初の5文字が同じお客さんは、何もしなくても自動でまとまります。ここで決めた分は、このパソコンだけで覚えます。</p></div>
     <div class="sec"><h4>締め日（お客さんへの請求用の区切り）</h4>
       <div class="field"><select id="cutSel" style="max-width:220px">${[5, 10, 15, 20, 25].map(d => `<option value="${d}" ${getCut() === d ? "selected" : ""}>${d}日締め（前の月の${d + 1}日〜${d}日）</option>`).join("")}</select></div>
       <p class="hint">上の「期・月をえらぶ」と、工事のくわしい画面に「${getCut()}日締め」の月が出ます。このパソコンだけの設定です（ほかのパソコンは別々に決めます）。</p></div>
@@ -88,6 +95,14 @@ function paintRate(body, me, D) {
     for (const el of $$("#uriRates [data-u]")) { const n = Number(String(el.value).replace(/[^\d]/g, "")); v[el.dataset.u] = Number.isFinite(n) ? n : 0; }
     setUri(v); toast("送る表の単価を覚えました");
   }));
+  $$("[data-g]", body).forEach(sel => sel.addEventListener("change", () => { setGroupMap(sel.dataset.g, sel.value); toast(sel.value ? `${sel.value} のカードに入れました` : "自分のカードにもどしました"); paintRate(body, me, D); }));
+  $("#addGroup").addEventListener("click", () => {
+    const name = $("#newGroup").value.trim();
+    if (!name) { toast("まとめの名前を入れてください"); return; }
+    addGroupName(name);
+    toast(`「${name}」を作りました。下の表で、入れるお客さんをえらんでください`);
+    paintRate(body, me, D);
+  });
   $("#cutSel").addEventListener("change", e => { setCut(Number(e.target.value)); toast(`${e.target.value}日締めにしました`); paintRate(body, me, D); });
   $$("#matRadios input").forEach(i => i.addEventListener("change", async () => {
     try { await update(ref(db, "daicho/settei"), { matDate: i.value }); toast("月に分ける日を変えました"); }
