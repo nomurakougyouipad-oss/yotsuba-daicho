@@ -106,7 +106,7 @@ export function laborByPlace(r, rs) {
   return out;
 }
 
-/* ---------- お客さんに送る表（売り）の時間のまとめ方（11/6 持ち主：お客さんの常用の請求と同じ分け方） ----------
+/* ---------- お客さんに送る表（売り）の時間のまとめ方（11/6 持ち主：お客さんの常用の請求書と同じ分け方） ----------
    ふつう＝平日工場・平日現場（遅刻・早退を引く）、残業＝工場残業・現場残業、深夜、休日＝休日工場・休日現場、移動＝移動行き・帰り、早出、突発 */
 export const URI_CATS = [
   ["ふつう", ["平日工場", "平日現場"]], ["残業", ["工場残業", "現場残業"]], ["深夜", ["深夜"]],
@@ -243,6 +243,9 @@ export function companyOf(no, kaisha, kotei) {
   return { code: p, name: (k && k.name) || `頭文字 ${p}（会社の表にない）` };
 }
 
+/** 固定の注番の割りあてのキー（OT26888 → "固定:OT888"。年がかわっても同じ） */
+export const koteiKey = no => (no ? "固定:" + no.slice(0, 2) + no.slice(4) : "");
+
 /** 固定の注番の名前（例 MM26000 → /common/kotei の MM000 の名前）。なければ "" */
 export function koteiName(no, kotei) {
   if (!no || !kotei) return "";
@@ -268,9 +271,11 @@ export function allJobs({ rows, orders, jobs, period, kaisha, kotei, workers, ra
     const kn = koteiName(no, kotei);
     const name = free ? key.slice(5) : (j && j.name) || kn || (v.ords[0] && v.ords[0].kenmei) || (v.rows[0] && v.rows[0].j) || "（日報の注番にない）";
     let comp = companyOf(no, kaisha, kotei);
-    const mapped = free && freeMap && freeMap[name];
+    // 注番なしは件名で、固定の注番は「固定:XX000」（年をのぞいた注番）で、持ち主が割りあてたお客さんを引く（11/6）
+    const mapKey = free ? name : comp.code === "固定" ? koteiKey(no) : "";
+    const mapped = mapKey && freeMap && freeMap[mapKey];
     if (mapped) comp = { code: "map", name: mapped };
-    out.push({ key, no, name, owner: (j && j.owner) || "", closed: !!(j && j.closed), free, inNippo: !!j, comp, mapped: mapped || "", s });
+    out.push({ key, no, name, owner: (j && j.owner) || "", closed: !!(j && j.closed), free, inNippo: !!j, comp, mapped: mapped || "", mapKey, s });
   }
   return out;
 }

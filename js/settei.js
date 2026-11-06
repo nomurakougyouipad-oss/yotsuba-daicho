@@ -165,7 +165,7 @@ function paintCode(body) {
 }
 
 /* ---------- 今すぐ保存（台帳の自分のデータを、このパソコンにファイルで） ---------- */
-const PATHS = [["daicho/rates", "単価（いつから）"], ["daicho/settei", "設定（決算月・締め日・送る表の単価・材料費の月）"], ["daicho/freeMap", "注番なしの割りあて"], ["daicho/groups", "お客さんのまとめ"], ["daicho/devices", "登録した端末"]];
+const PATHS = [["daicho/rates", "単価（いつから）"], ["daicho/settei", "設定（決算月・締め日・送る表の単価・材料費の月）"], ["daicho/freeMap", "注番なし・固定の注番の割りあて"], ["daicho/groups", "お客さんのまとめ"], ["daicho/devices", "登録した端末"]];
 function paintSave(body, me) {
   body.innerHTML = `
     <div class="sec"><h4>台帳のデータを、このパソコンに保存する</h4>

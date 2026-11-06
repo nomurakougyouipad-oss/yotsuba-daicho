@@ -344,15 +344,16 @@ function mapTargets() {
 }
 function renderList() {
   const all = LIST.filter(x => x.comp.name === compF);
-  const isFree = compF === "注番なし";
-  const targets = isFree ? mapTargets() : [];
+  const isFree = compF === "注番なし" || compF === "固定の注番（工場など）";   // どちらも「どのお客さんの分？」をえらべる
+  // 割りあてた工事は、お客さんのカードの中でも「どのお客さんの分？」を出す（そこで、えらびなおす・やめる。11/6）
+  const targets = isFree || all.some(x => x.mapped) ? mapTargets() : [];
   const qq = q.trim().toLowerCase();
   const rows = all.filter(x => seg === "all" || (seg === "closed" ? x.closed : !x.closed))
     .filter(x => !qq || (x.no + x.name + x.owner).toLowerCase().includes(qq))
     .sort((a, b) => b.s.total - a.s.total);
   $("#list").innerHTML = rows.map(x => `<button class="job ${x.closed ? "closed" : ""} ${x.free ? "free" : ""}" type="button" data-k="${esc(x.key)}">
     <div class="jname"><h3>${esc(x.name)}</h3><div class="meta">${x.no ? `<span>注番 <b>${esc(x.no)}</b></span>` : '<span class="chip free">注番なし</span>'}${x.mapped ? `<span class="chip">${esc(x.mapped)}の分</span>` : ""}${x.owner ? `<span>担当 ${esc(x.owner)}</span>` : ""}${x.closed ? '<span class="chip end">おわった</span>' : ""}${!x.free && !x.inNippo ? '<span class="chip free">日報の注番にない</span>' : ""}<span>最後 ${esc(mdText(x.s.last))}</span></div>
-      ${isFree ? `<label class="mapsel" onclick="event.stopPropagation()">どのお客さんの分？ <select data-map="${esc(x.name)}"><option value="">—</option>${targets.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join("")}</select></label>` : ""}</div>
+      ${(isFree || x.mapped) && x.mapKey ? `<label class="mapsel" onclick="event.stopPropagation()">どのお客さんの分？ <select data-map="${esc(x.mapKey)}"><option value="">${x.mapped ? "—（割りあてをやめる）" : "—"}</option>${targets.map(t => `<option value="${esc(t)}" ${x.mapped === t ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label>` : ""}</div>
     <div class="cell c-nk"><div class="lab">人工</div><div class="v num">${nk(x.s.ninku)}</div></div>
     <div class="cell c-labor"><div class="lab">労務費</div><div class="v num">${yen(x.s.labor)}<small>円</small></div>${x.s.lp["その他"] ? `<div class="sub">うち その他 ${yen(x.s.lp["その他"])}円</div>` : ""}</div>
     <div class="cell c-kojo"><div class="lab">うち 工場</div><div class="v num dim">${yen(x.s.lp["工場"])}<small>円</small></div></div>
@@ -363,7 +364,7 @@ function renderList() {
   $$("#list .job").forEach(b => b.addEventListener("click", e => { if (e.target.closest(".mapsel")) return; panelMonth = "all"; openJob(b.dataset.k); }));
   $$("#list [data-map]").forEach(sel => sel.addEventListener("change", () => {
     setFreeMap(sel.dataset.map, sel.value);
-    toast(sel.value ? `「${sel.dataset.map}」を ${sel.value} の分にしました` : "もどしました");
+    toast(sel.value ? `${sel.value} の分にしました` : "もどしました");
     renderAll();
   }));
 }
