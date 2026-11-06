@@ -1,6 +1,6 @@
 // 計算のたしかめ（ブラウザも Firebase もいらない）：node tools/test-keisan.mjs
 // 「OK」が並べばよい。「NG」が出たら js/keisan.js を直す
-import { KINDS, PLACES, placeOf, laborByPlace, fiscalYearOf, fyInfo, inPeriod, fiscalYearsOf, rateTable, rateFor, net, ninku, laborOf, groupOf, cost, orderDate, jobStats, allJobs, sumOf, companyOf, monthsOf } from "../js/keisan.js";
+import { KINDS, PLACES, placeOf, laborByPlace, fiscalYearOf, fyInfo, inPeriod, fiscalYearsOf, cutMonthOf, cutInfo, cutMonthsOf, uriHours, uriYen, DEFAULT_URI, rateTable, rateFor, net, ninku, laborOf, groupOf, cost, orderDate, jobStats, allJobs, sumOf, companyOf, monthsOf } from "../js/keisan.js";
 
 let bad = 0;
 const eq = (name, got, want) => {
@@ -122,6 +122,28 @@ eq("記録のある期（新しい順）", fiscalYearsOf([{ d: "2026-08-01" }, {
   eq("前期の分だけ", jobStats(rowsF, [], "fy:2026", o).labor, 20000);
   eq("今期の分だけ", jobStats(rowsF, [], "fy:2027", o).labor, 20000);
   eq("全期間", jobStats(rowsF, [], "all", o).labor, 40000);
+}
+
+// 11) 20日締め（前の月の21日〜20日）
+eq("11/20 は 11月の締め", cutMonthOf("2026-11-20", 20), "2026-11");
+eq("11/21 は 12月の締め", cutMonthOf("2026-11-21", 20), "2026-12");
+eq("12/25 は次の年の1月の締め", cutMonthOf("2026-12-25", 20), "2027-01");
+eq("締めの月のはじめ・おわり", cutInfo("cut:20:2026-11"), { cutDay: 20, ym: "2026-11", from: "2026-10-21", to: "2026-11-20", label: "10/21〜11/20" });
+eq("1月の締めは前の年の12月から", cutInfo("cut:20:2027-01").from, "2026-12-21");
+eq("cut の inPeriod", [inPeriod("2026-10-21", "cut:20:2026-11"), inPeriod("2026-10-20", "cut:20:2026-11"), inPeriod("2026-11-20", "cut:20:2026-11"), inPeriod("2026-11-21", "cut:20:2026-11")], [true, false, true, false]);
+eq("記録のある締めの月（新しい順）", cutMonthsOf([{ d: "2026-10-05" }, { d: "2026-10-25" }], [], "ordered", 20), ["cut:20:2026-11", "cut:20:2026-10"]);
+
+// 12) お客さんに送る表（売り）：ふつう・残業・深夜…の時間と金額
+{
+  const rs = [
+    { h: { 平日現場: 8, 現場残業: 2 }, late: 1 },
+    { h: { 平日工場: 8, 深夜: 2, 移動行き: 1, 早出: 1 } },
+    { h: { 休日現場: 8 } },
+  ];
+  const h = uriHours(rs);
+  eq("区分ごとの時間（ふつうは遅刻を引く）", h, { ふつう: 15, 残業: 2, 深夜: 2, 休日: 8, 移動: 1, 早出: 1, 突発: 0 });
+  eq("金額＝15×2500＋2×3125＋2×3750＋8×2500＋1×2500＋1×2500", uriYen(h, DEFAULT_URI), 15 * 2500 + 2 * 3125 + 2 * 3750 + 8 * 2500 + 2500 + 2500);
+  eq("単価を変えたら変わる", uriYen(h, { ...DEFAULT_URI, 休日: 3125 }), 15 * 2500 + 2 * 3125 + 2 * 3750 + 8 * 3125 + 2500 + 2500);
 }
 
 console.log(bad ? `\nNG が ${bad} こあります` : "\nぜんぶ OK");

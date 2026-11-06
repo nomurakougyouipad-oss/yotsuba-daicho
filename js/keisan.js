@@ -106,6 +106,30 @@ export function laborByPlace(r, rs) {
   return out;
 }
 
+/* ---------- お客さんに送る表（売り）の時間のまとめ方（11/6 持ち主：お客さんの常用の請求と同じ分け方） ----------
+   ふつう＝平日工場・平日現場（遅刻・早退を引く）、残業＝工場残業・現場残業、深夜、休日＝休日工場・休日現場、移動＝移動行き・帰り、早出、突発 */
+export const URI_CATS = [
+  ["ふつう", ["平日工場", "平日現場"]], ["残業", ["工場残業", "現場残業"]], ["深夜", ["深夜"]],
+  ["休日", ["休日工場", "休日現場"]], ["移動", ["移動行き", "移動帰り"]], ["早出", ["早出"]], ["突発", ["突発"]],
+];
+export const DEFAULT_URI = { ふつう: 2500, 残業: 3125, 深夜: 3750, 休日: 2500, 移動: 2500, 早出: 2500, 突発: 2500 };
+/** 行のならび → { ふつう: 時間, 残業: 時間, … }（ふつうから遅刻・早退を引く。0より下にはしない） */
+export function uriHours(rows) {
+  const out = Object.fromEntries(URI_CATS.map(([c]) => [c, 0]));
+  for (const r of rows) {
+    const h = r.h || {};
+    for (const [c, kinds] of URI_CATS) for (const k of kinds) out[c] += num(h[k]);
+    out["ふつう"] -= num(r.late) + num(r.early);
+  }
+  if (out["ふつう"] < 0) out["ふつう"] = 0;
+  for (const c of Object.keys(out)) out[c] = Math.round(out[c] * 10) / 10;
+  return out;
+}
+/** 売りの金額 = Σ 時間 × その区分の単価 */
+export function uriYen(hours, rates) {
+  return Math.round(URI_CATS.reduce((a, [c]) => a + (hours[c] || 0) * (Number((rates || {})[c]) || 0), 0));
+}
+
 /* ---------- 資材便の注文 ---------- */
 /** 材料費（税抜）：請求書の金額、まだなら納品書の金額、どちらもなければ null（金額まだ） */
 export const cost = o => (o.seikyu != null ? num(o.seikyu) : o.nouhin != null ? num(o.nouhin) : null);
@@ -149,10 +173,38 @@ export function fyInfo(period, km = DEFAULT_KESSAN_MONTH) {
   const fromY = km === 12 ? y : y - 1, fromM = km === 12 ? 1 : km + 1;
   return { y, label: `${y}年${km}月期`, from: `${fromY}-${p(fromM)}`, to: `${y}-${p(km)}` };
 }
+/* ---------- 締め日の月（11/5 持ち主：お客さんへの請求に使う。例 20日締め → 10/21〜11/20 を「11月20日締め」） ----------
+   period … "cut:20:2026-11"（締め日 20、2026-11-20 でおわるひと月） */
+const pad2 = x => String(x).padStart(2, "0");
+/** 日付 → その日が入る締めの月（YYYY-MM）。締め日より後の日は、次の月の締めに入る */
+export function cutMonthOf(d, cutDay) {
+  const y = Number(String(d).slice(0, 4)), m = Number(String(d).slice(5, 7)), day = Number(String(d).slice(8, 10));
+  if (!y || !m || !day) return "";
+  if (day <= cutDay) return `${y}-${pad2(m)}`;
+  return m === 12 ? `${y + 1}-01` : `${y}-${pad2(m + 1)}`;
+}
+/** "cut:20:2026-11" → { cutDay, ym, from:"2026-10-21", to:"2026-11-20", label:"10/21〜11/20" } */
+export function cutInfo(period) {
+  const [, cd, ym] = String(period).split(":");
+  const cutDay = Number(cd), y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7));
+  const py = m === 1 ? y - 1 : y, pm = m === 1 ? 12 : m - 1;
+  const from = `${py}-${pad2(pm)}-${pad2(cutDay + 1)}`, to = `${y}-${pad2(m)}-${pad2(cutDay)}`;
+  return { cutDay, ym, from, to, label: `${pm}/${cutDay + 1}〜${m}/${cutDay}` };
+}
+/** 記録のある締めの月（新しい順）["cut:20:2026-11", …] */
+export function cutMonthsOf(rows, orders, matDate, cutDay) {
+  const s = new Set();
+  for (const r of rows) { const c = cutMonthOf(r.d, cutDay); if (c) s.add(c); }
+  for (const o of orders) { const c = cutMonthOf(orderDate(o, matDate), cutDay); if (c) s.add(c); }
+  return [...s].sort().reverse().map(c => `cut:${cutDay}:${c}`);
+}
+
 export const inPeriod = (d, period, km = DEFAULT_KESSAN_MONTH) => {
   if (period === "all") return true;
-  if (String(period).startsWith("fy:")) return fiscalYearOf(d, km) === Number(String(period).slice(3));
-  return String(d).slice(0, 7) === period;
+  const p = String(period);
+  if (p.startsWith("fy:")) return fiscalYearOf(d, km) === Number(p.slice(3));
+  if (p.startsWith("cut:")) { const [, cd, ym] = p.split(":"); return cutMonthOf(d, Number(cd)) === ym; }
+  return String(d).slice(0, 7) === p;
 };
 
 export function jobStats(rows, orders, period, opts) {
@@ -201,7 +253,8 @@ export function koteiName(no, kotei) {
 /** 工事の一覧を作る（日報にある・注文がある工事ぜんぶ）
    jobs … Map(注番 → {name, owner, closed, fixed})（日報の master/jobs）
    返り値 [{key, no, name, owner, closed, free, comp, s}] */
-export function allJobs({ rows, orders, jobs, period, kaisha, kotei, workers, rates, matDate, kessanMonth }) {
+/** freeMap … 注番なしの件名 → お客さんの名前（持ち主が「注番なし」の一覧でえらんだもの。11/5）。えらんだ分は、そのお客さんのカードに入る */
+export function allJobs({ rows, orders, jobs, period, kaisha, kotei, workers, rates, matDate, kessanMonth, freeMap }) {
   const byKey = new Map();
   for (const r of rows) { const k = keyOf(r); (byKey.get(k) || byKey.set(k, { rows: [], ords: [] }).get(k)).rows.push(r); }
   for (const o of orders) { const k = String(o.chuban || ""); if (!k) continue; (byKey.get(k) || byKey.set(k, { rows: [], ords: [] }).get(k)).ords.push(o); }
@@ -214,7 +267,10 @@ export function allJobs({ rows, orders, jobs, period, kaisha, kotei, workers, ra
     if (!s.rows.length && !s.ords.length) continue;
     const kn = koteiName(no, kotei);
     const name = free ? key.slice(5) : (j && j.name) || kn || (v.ords[0] && v.ords[0].kenmei) || (v.rows[0] && v.rows[0].j) || "（日報の注番にない）";
-    out.push({ key, no, name, owner: (j && j.owner) || "", closed: !!(j && j.closed), free, inNippo: !!j, comp: companyOf(no, kaisha, kotei), s });
+    let comp = companyOf(no, kaisha, kotei);
+    const mapped = free && freeMap && freeMap[name];
+    if (mapped) comp = { code: "map", name: mapped };
+    out.push({ key, no, name, owner: (j && j.owner) || "", closed: !!(j && j.closed), free, inNippo: !!j, comp, mapped: mapped || "", s });
   }
   return out;
 }

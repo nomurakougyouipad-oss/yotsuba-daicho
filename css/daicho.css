@@ -100,6 +100,8 @@ input:focus,select:focus,button:focus-visible{outline:3px solid var(--accent);ou
 .job .meta b{font-family:Oswald,sans-serif;color:var(--ink);font-size:17px}
 .cell .lab{font-size:13px;color:var(--muted)} .cell .v{font-size:26px;line-height:1.2} .cell .v.dim{font-size:22px;color:var(--ink);opacity:.85}
 .cell .v.tot{color:var(--accent)} .cell .sub{font-size:13px;color:var(--muted);font-weight:500;white-space:nowrap} .cell .sub.num{color:var(--ink)} .cell .sub.warn{color:var(--accent);font-weight:700}
+.mapsel{display:inline-flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--muted);margin-top:6px;max-width:100%}
+.mapsel select{min-height:44px;max-width:100%;padding:4px 8px;font-size:14px;background:var(--surface)}
 .chip{display:inline-block;border:1.5px solid currentColor;border-radius:4px;padding:1px 8px;font-size:12px;font-weight:700}
 .chip.end{color:var(--bar3)} .chip.free{color:var(--muted)}
 .empty{padding:36px;text-align:center;color:var(--muted);background:var(--surface);border-radius:8px}
@@ -129,6 +131,7 @@ tr.sum td{font-weight:700;border-top:2px solid var(--line)}
 .months{display:flex;gap:6px;flex-wrap:wrap}
 .months button{border:1.5px solid var(--line);background:transparent;border-radius:4px;padding:6px 12px;font-weight:700;color:var(--muted);min-height:44px}
 .months button.on{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+.months.cutrow{align-items:center} .months.cutrow .hint{margin-right:4px}
 
 /* ⚙ 設定 */
 .rates{display:grid;grid-template-columns:1fr 150px;gap:6px 12px;align-items:center}

@@ -31,6 +31,11 @@
         "$other": { ".validate": false }
       }
     },
+    "freeMap": {
+      ".read": "auth != null && auth.token.dc_role == 'office' && root.child('daicho/devices/' + auth.uid + '/role').val() == 'office'",
+      ".write": "auth != null && auth.token.dc_role == 'office' && root.child('daicho/devices/' + auth.uid + '/role').val() == 'office'",
+      "$key": { ".validate": "newData.isString() && newData.val().length <= 40" }
+    },
     "settei": {
       ".read": "auth != null && auth.token.dc_role == 'office' && root.child('daicho/devices/' + auth.uid + '/role').val() == 'office'",
       ".write": "auth != null && auth.token.dc_role == 'office' && root.child('daicho/devices/' + auth.uid + '/role').val() == 'office'",

@@ -4,7 +4,8 @@ import { ref, get, set, update } from "https://www.gstatic.com/firebasejs/12.19.
 import { db, call } from "./firebase.js";
 import { $, $$, esc, yen, openPanel, closePanel, toast } from "./common.js";
 import { myUid, errorText } from "./touroku.js";
-import { KINDS, DEFAULT_RATE, DEFAULT_MINUS, rateTable, fillKinds } from "./keisan.js";
+import { KINDS, DEFAULT_RATE, DEFAULT_MINUS, URI_CATS, rateTable, fillKinds } from "./keisan.js";
+import { getCut, setCut, getUri, setUri } from "./app.js";
 
 let tab = "rate";
 
@@ -58,7 +59,13 @@ function paintRate(body, me, D) {
       <div class="radios" id="matRadios">
         ${[["ordered", "注文した日"], ["arrived", "届いた日（まだなら注文した日）"], ["billed", "請求の日（まだなら届いた日・注文した日）"]].map(([v, l]) => `<label><input type="radio" name="matDate" value="${v}" ${matDate === v ? "checked" : ""}>${l}</label>`).join("")}
       </div>
-      <p class="hint">「工事の全期間」には関係ありません。月をえらんだときだけ、どの月に入れるかが変わります。</p></div>`;
+      <p class="hint">「工事の全期間」には関係ありません。月をえらんだときだけ、どの月に入れるかが変わります。</p></div>
+    <div class="sec"><h4>締め日（お客さんへの請求用の区切り）</h4>
+      <div class="field"><select id="cutSel" style="max-width:220px">${[5, 10, 15, 20, 25].map(d => `<option value="${d}" ${getCut() === d ? "selected" : ""}>${d}日締め（前の月の${d + 1}日〜${d}日）</option>`).join("")}</select></div>
+      <p class="hint">上の「期・月をえらぶ」と、工事のくわしい画面に「${getCut()}日締め」の月が出ます。このパソコンだけの設定です（ほかのパソコンは別々に決めます）。</p></div>
+    <div class="sec"><h4>お客さんに送る表の単価（売り） <span class="hint">「Excel に出す」の「送る用」の金額に使います。上の労務費（原価）の単価とは別です</span></h4>
+      <div class="rates" id="uriRates">${URI_CATS.map(([c, kinds]) => `<label for="u_${c}">${c} <span class="hint">${kinds.join("・")}</span></label><input class="inp num" id="u_${c}" data-u="${c}" inputmode="numeric" value="${getUri()[c]}">`).join("")}</div>
+      <p class="hint">入れたらすぐ覚えます（このパソコンだけ）。ふつうは遅刻・早退を引いた時間です。</p></div>`;
   $("#rateForm").addEventListener("submit", async e => {
     e.preventDefault();
     const from = $("#rFrom").value, err = $("#rErr"), go = $("#rGo");
@@ -76,6 +83,12 @@ function paintRate(body, me, D) {
     } catch (ex) { err.textContent = errorText(ex); }
     go.disabled = false;
   });
+  $$("#uriRates [data-u]").forEach(i => i.addEventListener("change", () => {
+    const v = { ...getUri() };
+    for (const el of $$("#uriRates [data-u]")) { const n = Number(String(el.value).replace(/[^\d]/g, "")); v[el.dataset.u] = Number.isFinite(n) ? n : 0; }
+    setUri(v); toast("送る表の単価を覚えました");
+  }));
+  $("#cutSel").addEventListener("change", e => { setCut(Number(e.target.value)); toast(`${e.target.value}日締めにしました`); paintRate(body, me, D); });
   $$("#matRadios input").forEach(i => i.addEventListener("change", async () => {
     try { await update(ref(db, "daicho/settei"), { matDate: i.value }); toast("月に分ける日を変えました"); }
     catch (ex) { toast(errorText(ex)); }
