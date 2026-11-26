@@ -97,7 +97,10 @@ input:focus,select:focus,button:focus-visible{outline:3px solid var(--accent);ou
 .seg .tab.on{background:var(--ink);color:var(--ground);border-color:var(--ink)}
 .list{display:grid;gap:10px}
 .job{background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--accent);border-radius:8px;padding:16px 20px;display:grid;grid-template-columns:3.4fr 1fr 1.8fr 1.5fr 1.5fr 1.6fr 1.9fr;gap:14px;align-items:center;cursor:pointer;text-align:left;width:100%}
-.job:hover{border-color:var(--amber)} .job.closed{border-left-color:var(--bar3);opacity:.75} .job.free{border-left-color:var(--line)}
+.job:hover{border-color:var(--amber)} .job.free{border-left-color:var(--line)}
+/* おわった工事：うすくせず、左の帯を緑・背景にうすい緑をのせて、ひと目で分かるように（11/26 持ち主） */
+.job.closed{border-left-color:var(--green);background:color-mix(in srgb,var(--green) 8%,var(--surface))}
+.job.closed h3{color:var(--muted)}
 .job h3{margin:0;font-size:20px;font-weight:700;line-height:1.35}
 .job .meta{font-size:14px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
 .job .meta b{font-family:Oswald,sans-serif;color:var(--ink);font-size:17px}
@@ -106,7 +109,7 @@ input:focus,select:focus,button:focus-visible{outline:3px solid var(--accent);ou
 .mapsel{display:inline-flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--muted);margin-top:6px;max-width:100%}
 .mapsel select{min-height:44px;max-width:100%;padding:4px 8px;font-size:14px;background:var(--surface)}
 .chip{display:inline-block;border:1.5px solid currentColor;border-radius:4px;padding:1px 8px;font-size:12px;font-weight:700}
-.chip.end{color:var(--bar3)} .chip.free{color:var(--muted)}
+.chip.end{background:var(--green);border-color:var(--green);color:var(--surface);font-size:13px;padding:2px 10px} .chip.free{color:var(--muted)}
 .empty{padding:36px;text-align:center;color:var(--muted);background:var(--surface);border-radius:8px}
 
 /* 右から出る画面 */

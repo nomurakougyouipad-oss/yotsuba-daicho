@@ -79,7 +79,7 @@ const D = { me: null, nippo: null, orders: null, ordersErr: "", common: null, da
 const KM = () => (D.daicho && D.daicho.settei && Number(D.daicho.settei.kessanMonth)) || DEFAULT_KESSAN_MONTH;
 const thisFY = () => "fy:" + fiscalYearOf(ymd(Date.now()), KM());
 let PERIOD = "fy:" + fiscalYearOf(ymd(Date.now()), DEFAULT_KESSAN_MONTH);
-let compF = null, groupF = null, seg = "open", q = "";
+let compF = null, groupF = null, seg = "all", q = "";   // 工事の一覧は「すべて」から（11/26 持ち主。おわった工事は下にまとめて色で分ける）
 let panelKey = null, panelMonth = "all";
 /* ---------- 設定（全部の端末で同じ。Firebase の /daicho/settei・/daicho/freeMap・/daicho/groups。11/6） ----------
    締め日（cutDay）・お客さんに送る表の単価（uri）・注番なしの件名→お客さん（freeMap）・お客さんのまとめ（groups） */
@@ -297,7 +297,7 @@ function tileHTML(g, attr) {
       <div><span class="lab">労務費＋材料費</span><b class="num tot">${yen(g.t.labor + g.t.mat)}</b></div>
       <div><span class="lab">金額まだの注文</span><b class="num">${g.t.noPrice || "–"}</b></div></div></button>`;
 }
-function gotoJobs(c) { compF = c; seg = "open"; q = ""; $("#q").value = ""; show("jobs"); }
+function gotoJobs(c) { compF = c; seg = "all"; q = ""; $("#q").value = ""; show("jobs"); }
 
 function renderHome() {
   $("#homeBig").innerHTML = big3(sumOf(LIST), LIST.length);
@@ -350,9 +350,9 @@ function renderList() {
   const qq = q.trim().toLowerCase();
   const rows = all.filter(x => seg === "all" || (seg === "closed" ? x.closed : !x.closed))
     .filter(x => !qq || (x.no + x.name + x.owner).toLowerCase().includes(qq))
-    .sort((a, b) => b.s.total - a.s.total);
+    .sort((a, b) => (a.closed ? 1 : 0) - (b.closed ? 1 : 0) || b.s.total - a.s.total);   // 動いている工事が上、おわった工事は下にまとめる
   $("#list").innerHTML = rows.map(x => `<button class="job ${x.closed ? "closed" : ""} ${x.free ? "free" : ""}" type="button" data-k="${esc(x.key)}">
-    <div class="jname"><h3>${esc(x.name)}</h3><div class="meta">${x.no ? `<span>注番 <b>${esc(x.no)}</b></span>` : '<span class="chip free">注番なし</span>'}${x.mapped ? `<span class="chip">${esc(x.mapped)}の分</span>` : ""}${x.owner ? `<span>担当 ${esc(x.owner)}</span>` : ""}${x.closed ? '<span class="chip end">おわった</span>' : ""}${!x.free && !x.inNippo ? '<span class="chip free">日報の注番にない</span>' : ""}<span>最後 ${esc(mdText(x.s.last))}</span></div>
+    <div class="jname"><h3>${esc(x.name)}</h3><div class="meta">${x.no ? `<span>注番 <b>${esc(x.no)}</b></span>` : '<span class="chip free">注番なし</span>'}${x.mapped ? `<span class="chip">${esc(x.mapped)}の分</span>` : ""}${x.owner ? `<span>担当 ${esc(x.owner)}</span>` : ""}${x.closed ? '<span class="chip end">✓ おわった</span>' : ""}${!x.free && !x.inNippo ? '<span class="chip free">日報の注番にない</span>' : ""}<span>最後 ${esc(mdText(x.s.last))}</span></div>
       ${(isFree || x.mapped) && x.mapKey ? `<label class="mapsel" onclick="event.stopPropagation()">どのお客さんの分？ <select data-map="${esc(x.mapKey)}"><option value="">${x.mapped ? "—（割りあてをやめる）" : "—"}</option>${targets.map(t => `<option value="${esc(t)}" ${x.mapped === t ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label>` : ""}</div>
     <div class="cell c-nk"><div class="lab">人工</div><div class="v num">${nk(x.s.ninku)}</div></div>
     <div class="cell c-labor"><div class="lab">労務費</div><div class="v num">${yen(x.s.labor)}<small>円</small></div>${x.s.lp["その他"] ? `<div class="sub">うち その他 ${yen(x.s.lp["その他"])}円</div>` : ""}</div>
